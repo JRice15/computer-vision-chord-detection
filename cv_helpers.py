@@ -1,5 +1,7 @@
 import cv2
 cv = cv2
+import skvideo.io
+import numpy as np
 
 """
 basic helper functions
@@ -14,6 +16,15 @@ def readvid(file):
             break
         vidframes.append(frame)
     return vidframes
+
+def writevid(vid, name, flipchannels=True):
+    """
+    flipchannels: bool, true if video is in BGR
+    """
+    print("writing vid", name+".mp4 ...")
+    vid = np.array(vid)
+    vid = vid[...,::-1]
+    skvideo.io.vwrite(name+".mp4", vid, outputdict={"-pix_fmt": "yuv420p"})
 
 def showim(img, name="", ms=1000):
     """
@@ -30,5 +41,6 @@ def showvid(vid, name="", ms=25):
         cv.imshow(name, frame)
         if cv.waitKey(ms) != -1:
             break
+    cv2.destroyAllWindows()
 
 
