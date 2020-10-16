@@ -41,6 +41,7 @@ def showvid(vid, name="", ms=25):
         cv.imshow(name, frame)
         if cv.waitKey(ms) != -1:
             break
-    cv2.destroyAllWindows()
+    cv.destroyWindow(name)
+    cv.waitKey(1)
 
 
