@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--file",default="acoustic_light_short.mov")
 args = parser.parse_args()
 
-vid = readvid(args.file)[:40]
+vid = readvid(args.file)
 # add neck image as last in pipeline
 # vid.append(cv.imread("neck_dark.jpg"))
 
@@ -36,7 +36,7 @@ blurred = [cv.GaussianBlur(i, (5,5), 2) for i in gray]
 """
 edge detection. the second number is the main threshold (lower == more edges, more noise)
 """
-edges = [cv.Canny(i, 10, 50) for i in blurred]
+edges = [cv.Canny(i, 10, 70) for i in blurred]
 # edges = [cv.dilate(i, np.ones((3,3),np.uint8),iterations=1) for i in edges]
 # edges = [cv.erode(i, np.ones((5,5),np.uint8),iterations=1) for i in edges]
 showvid(edges)
@@ -46,11 +46,24 @@ showvid(edges)
 """
 find lines from the edges
 """
+def horizontal_ish(angle):
+    """
+    filter angles within 45deg of horizontal
+    """
+    if (np.pi*1/4 < angle < np.pi*3/4) or (np.pi*1/4 < angle < np.pi*3/4):
+        return True
+    return False
+
 lines = [cv.HoughLines(i, 1, np.pi/180, 100, None, 0, 0) for i in edges]
+# remove mostly vertical lines and take the first 500; they should be returned in order of confidence
+lines = [[j for j in framelines if horizontal_ish(j[0][1])][:500] for framelines in lines]
 
 def findparallel(lines, theta_threshold=(np.pi/180*3), maxn=None):
     """
-    theta_threshold: radians, the threshold for how close lines have to be to be parallel
+    args:
+        theta_threshold: radians, the threshold for how close in angle lines 
+            have to be to be parallel
+        maxn: number of top line bundles to find in each frame
     """
     vid_lines = []
     for frame_lines in lines:
@@ -63,9 +76,7 @@ def findparallel(lines, theta_threshold=(np.pi/180*3), maxn=None):
                 if (abs(l1[0][1] - l2[0][1]) <= theta_threshold):          
                     this_lines.append(l2)
             all_lines.append(this_lines)
-        """
-        sort by number of lines found in each bundle, take top maxn
-        """
+        # sort by number of lines found in each bundle, take top maxn
         sorted(all_lines, key=lambda x: len(x), reverse=True)
         if maxn is not None:
             all_lines = all_lines[:maxn]
@@ -76,6 +87,7 @@ def findparallel(lines, theta_threshold=(np.pi/180*3), maxn=None):
     return vid_lines
 
 lines = findparallel(lines, maxn=1)
+
 
 """
 write the lines onto a black video
@@ -120,7 +132,7 @@ for i, frame in enumerate(linesvid):
     boxes.append(box)
 
 showvid(boxes_vid)
-# writevid(boxes_vid[:-1], "fretboard_bound")
+writevid(boxes_vid, "fretboard_bound")
 
 """
 rotate the frames so that the fretboard is horizontal
@@ -143,15 +155,55 @@ for i, frame in enumerate(vid):
     rot_mask = rotate_image(mask, degrees)
 
     y,x,z = np.nonzero(rot_mask)
+    if len(np.squeeze(y)) == 0:
+        # bad frame, no box found
+        continue
     (topy, topx) = (np.min(y), np.min(x))
     (bottomy, bottomx) = (np.max(y), np.max(x))
     rot_frame = rot_frame[topy:bottomy+1, topx:bottomx+1]
     fretboard_vid.append(rot_frame)
 
-
 showvid(fretboard_vid, name="fretboard", ms=50)
 
+"""
+now find frets
+"""
+gray = [cv.cvtColor(i, cv.COLOR_BGR2GRAY) for i in fretboard_vid]
+blurred = [cv.GaussianBlur(i, (5,5), 2) for i in gray]
 
+# a bit lower threshold now, as there is less distracting noise
+edges = [cv.Canny(i, 10, 50) for i in blurred]
+
+showvid(edges)
+
+def vertical(angle, threshhold=(np.pi/180*8)):
+    if (-threshhold < angle < threshhold) or (np.pi-threshhold < angle < np.pi+threshhold):
+        return True
+    return False
+    
+lines = [cv.HoughLines(i, 1, np.pi/180, 25, None, 0, 0) for i in edges]
+# find vertical lines
+lines = [[j for j in framelines if vertical(j[0][1])][:300] for framelines in lines]
+
+# linesvid = [np.zeros_like(i) for i in fretboard_vid]
+linesvid = [np.copy(i) for i in fretboard_vid]
+
+if lines is not None:
+    for idx, frame_lines in enumerate(lines):
+        for i in range(0, len(frame_lines)):
+            rho = frame_lines[i][0][0]
+            theta = frame_lines[i][0][1]
+            a = math.cos(theta)
+            b = math.sin(theta)
+            x0 = a * rho
+            y0 = b * rho
+            pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
+            pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
+            cv.line(linesvid[idx], pt1, pt2, (255,255,255), 3, cv.LINE_AA)
+
+# linesvid = [np.uint8(cv.cvtColor(np.float32(i), cv.COLOR_BGR2GRAY)) for i in linesvid]
+
+showvid(linesvid)
 
 """
 tried some keypoint matching, but didn't make much progress
