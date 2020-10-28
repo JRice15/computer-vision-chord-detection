@@ -2,6 +2,7 @@ import argparse
 import math
 import os
 import sys
+import time
 
 import cv2
 cv = cv2
@@ -270,20 +271,143 @@ match vertical lines to fret spacing
 
 
 # get position of lines horizontally (since they must be approximately vertical, the 
-#  rho should be approximately the horizontal distance)
-line_pos = [np.sort(np.array([j[0][0] for j in framelines])) for framelines in lines]
+#  rho should be approximately the horizontal distance). np.unique also sorts
+line_pos = [np.unique(np.array([j[0][0] for j in framelines], dtype=int)) for framelines in lines]
 
-# ratio of fret length to length of next fret, down and up the neck
-D_RATIO = 0.943874312682
-U_RATIO = 1.05946309436
+# factor to be within to be considered a fret match
+fret_close_factor = 0.08
+# min dist to be considered a match, in pixels
+min_fret_close = 1
+
+def is_close(real, target, fret_len):
+    """
+    determine if a line should be considered a match for this fret
+    """
+    within = max(min_fret_close, fret_len*fret_close_factor)
+    return abs(real - target) <= within
+
+# in pixels. fret distances less than or equal to this num pixels will be ignored
+min_fret = 3
+max_fret = 300
+
+# number of consecutive misses after which to stop searching
+max_miss = 4
+
+# ratio of fret length to length of next fret, left (higher) and right 
+#  (lower) on the neck
+L_RATIO = 0.943874312682
+R_RATIO = 1.05946309436
 
 def match_frets(line_pos):
     """
-    for each pair of lines positions
+    for each pair of lines positions, use the distance between them as a possible fret
+    length, and then extend out to either side and see how many other lines would match
+    that fret pattern
     """
+    matches = []
+    # bestij = None
     for i in range(len(line_pos) - 1):
-        for j in range(i+1, i+len(line_pos[i:])):
-            d = line_pos[j] - line_pos[i]
+        imatches = []
+        # bestj = None
+        for j in range(i+1, len(line_pos)):
+            jmatches = []
+            r = line_pos[j]
+            l = line_pos[i]
+            d = r - l
+            if d <= min_fret:
+                continue
+            if d >= max_fret:
+                break # end inner loop, go to next outer loop interation
+
+            # left = higher on the neck
+            if i > 0:
+                dl = d
+                l_arr = line_pos[:i]
+                def ok_idx(n):
+                    return min(n, len(l_arr)-1)
+                misscounter = 0
+                while misscounter < max_miss:
+                    dl *= L_RATIO
+                    l -= dl
+                    if l < 0:
+                        break
+                    idxL = ok_idx(np.searchsorted(l_arr, l, side="left"))
+                    idxR = ok_idx(idxL + 1)
+                    valL = l_arr[idxL]
+                    valR = l_arr[idxR]
+                    closeL, closeR = False, False
+                    if (closeL := is_close(valL, l, dl)) or (closeR := is_close(valR, l, dl)):
+                        misscounter = 0
+                        # save the closer one
+                        if closeL and closeR:
+                            if abs(valL - l) <= abs(valR - l):
+                                jmatches.append(valL)
+                            else:
+                                jmatches.append(valR)
+                        elif closeL:
+                            jmatches.append(valL)
+                        else:
+                            jmatches.append(valR)
+                    else:
+                        misscounter += 1
+
+            # matches so far are in reverse sorted order            
+            jmatches.reverse()
+            # add reference fret
+            jmatches.append(line_pos[i])
+            jmatches.append(line_pos[j])
+
+            # right = lower on the neck
+            if j+1 < len(line_pos)-1:
+                dr = d
+                r_arr = line_pos[j+1:]
+                def ok_idx(n):
+                    return min(n, len(r_arr)-1)
+                misscounter = 0
+                while misscounter < max_miss and r < line_pos[-1]:
+                    dr *= R_RATIO
+                    r += dr
+                    idxL = ok_idx(np.searchsorted(r_arr, r, side="left"))
+                    idxR = ok_idx(idxL + 1)
+                    valL = r_arr[idxL]
+                    valR = r_arr[idxR]
+                    closeL, closeR = False, False
+                    if (closeL := is_close(valL, r, dr)) or (closeR := is_close(valR, r, dr)):
+                        misscounter = 0
+                        # save the closer one
+                        if closeL and closeR:
+                            if abs(valL - r) < abs(valR - r):
+                                jmatches.append(valL)
+                            else:
+                                jmatches.append(valR)
+                        elif closeL:
+                            jmatches.append(valL)
+                        else:
+                            jmatches.append(valR)
+                    else:
+                        misscounter += 1
+            
+            if len(jmatches) > len(imatches):
+                imatches = jmatches
+                # bestj = line_pos[j]
+        
+        if len(imatches) >= len(matches):
+            matches = imatches
+            # bestij = (line_pos[i], bestj)
+    
+    return matches
+
+matches = [match_frets(i) for i in line_pos]
+
+fretvid = [np.copy(i) for i in fretboard_vid]
+
+y = len(linesvid[0])//2
+for i, frame in enumerate(fretvid):
+    for x in matches[i]:
+        cv.line(frame, (x,0), (x,2000), (0,0,255), 3)
+
+showvid(fretvid, ms=800)
+
 
 
 
