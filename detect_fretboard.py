@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--file",default="acoustic_light_short.mov")
 args = parser.parse_args()
 
-vid = readvid(args.file)
+vid = readvid(args.file)[:20]
 # add neck image as last in pipeline
 # vid.append(cv.imread("neck_dark.jpg"))
 
@@ -39,7 +39,8 @@ edge detection. the second number is the main threshold (lower == more edges, mo
 edges = [cv.Canny(i, 10, 70) for i in blurred]
 # edges = [cv.dilate(i, np.ones((3,3),np.uint8),iterations=1) for i in edges]
 # edges = [cv.erode(i, np.ones((5,5),np.uint8),iterations=1) for i in edges]
-showvid(edges)
+
+# showvid(edges)
 
 # conts = [cv.findContours(i, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)[0] for i in edges]
 
@@ -55,16 +56,19 @@ def horizontal_ish(angle):
     return False
 
 lines = [cv.HoughLines(i, 1, np.pi/180, 100, None, 0, 0) for i in edges]
+lines = [i if i is not None else [] for i in lines]
+
 # remove mostly vertical lines and take the first 500; they should be returned in order of confidence
 lines = [[j for j in framelines if horizontal_ish(j[0][1])][:500] for framelines in lines]
 
-def findparallel(lines, theta_threshold=(np.pi/180*3), maxn=None):
+def findparallel(lines, theta_threshold=3, maxn=None):
     """
     args:
-        theta_threshold: radians, the threshold for how close in angle lines 
+        theta_threshold: degrees, the threshold for how close in angle lines 
             have to be to be parallel
         maxn: number of top line bundles to find in each frame
     """
+    theta_threshold = np.pi/180 * theta_threshold
     vid_lines = []
     for frame_lines in lines:
         all_lines = []
@@ -110,7 +114,7 @@ if lines is not None:
 
 linesvid = [np.uint8(cv.cvtColor(np.float32(i), cv.COLOR_BGR2GRAY)) for i in linesvid]
 
-showvid(linesvid)
+# showvid(linesvid)
 
 """
 find the contours of the linesvid. It should find a big bounding box around the big
@@ -131,8 +135,58 @@ for i, frame in enumerate(linesvid):
     cv2.drawContours(im,[box],0,(0,0,255),2)
     boxes.append(box)
 
-showvid(boxes_vid)
-writevid(boxes_vid, "fretboard_bound")
+
+# showvid(boxes_vid)
+# writevid(boxes_vid, "fretboard_bound")
+
+
+"""
+smoothing
+"""
+# span is number of frames on each side to average the bounding boxes of
+span = 3
+# num_outliers number of highest and lowest to remove before averaging
+num_outliers = 0
+avg_boxes = []
+boxes_vid = [np.copy(i) for i in vid]
+
+assert len(boxes) >= (2 * span + 1)
+for i, box in enumerate(boxes):
+    # get a selection of 2*span+1 consecutive boxes, and repeat some when at the edges of the video
+    top = i + span + 1
+    bottom = i-span
+    if bottom < 0:
+        bottom = 0
+    selection = boxes[bottom:top]
+    if i < span:
+        selection = np.concatenate((selection, boxes[:(span-i)]), axis=0)
+    elif i >= (len(boxes) - span):
+        i2 = len(boxes) - i - 1
+        selection = np.concatenate((selection, boxes[-(span - i2):]), axis=0)
+
+    # remove highest and lowest n
+    if num_outliers > 0:
+        newboxes = []
+        for box in np.array(selection).T:
+            new = []
+            for row in box:
+                for _ in range(num_outliers):
+                    row = np.delete(row, row.argmin())
+                    row = np.delete(row, row.argmax())
+                new.append(row)
+            newboxes.append(new)
+        selection = np.array(newboxes).T
+        
+    # average the rest
+    newbox = np.mean(selection, axis=0)
+    newbox = np.int0(newbox)
+    avg_boxes.append(newbox)
+    cv2.drawContours(boxes_vid[i],[newbox],0,(0,0,255),2)
+
+
+boxes = avg_boxes
+showvid(boxes_vid, name="smoothed")
+
 
 """
 rotate the frames so that the fretboard is horizontal
@@ -161,12 +215,13 @@ for i, frame in enumerate(vid):
     (topy, topx) = (np.min(y), np.min(x))
     (bottomy, bottomx) = (np.max(y), np.max(x))
     rot_frame = rot_frame[topy:bottomy+1, topx:bottomx+1]
+    # TODO extend the bottom, since it tends to miss the smaller strings more often?
     fretboard_vid.append(rot_frame)
 
 showvid(fretboard_vid, name="fretboard", ms=50)
 
 """
-now find frets
+find vertical lines that should correspond to frets
 """
 gray = [cv.cvtColor(i, cv.COLOR_BGR2GRAY) for i in fretboard_vid]
 blurred = [cv.GaussianBlur(i, (5,5), 2) for i in gray]
@@ -176,34 +231,61 @@ edges = [cv.Canny(i, 10, 50) for i in blurred]
 
 showvid(edges)
 
-def vertical(angle, threshhold=(np.pi/180*8)):
+def vertical(angle, threshhold=3):
+    """
+    find vertical lines within <threshhold> degrees
+    """
+    # convert to radians
+    threshhold = np.pi/180 * threshhold
+    # find vertical lines (either "up" or "down")
     if (-threshhold < angle < threshhold) or (np.pi-threshhold < angle < np.pi+threshhold):
         return True
     return False
     
 lines = [cv.HoughLines(i, 1, np.pi/180, 25, None, 0, 0) for i in edges]
-# find vertical lines
-lines = [[j for j in framelines if vertical(j[0][1])][:300] for framelines in lines]
+lines = [i if i is not None else [] for i in lines]
 
-# linesvid = [np.zeros_like(i) for i in fretboard_vid]
+# find vertical lines, take first top_n (as the lines are returned in order of confidence)
+top_n = 150
+lines = [[j for j in framelines if vertical(j[0][1])][:top_n] for framelines in lines]
+
 linesvid = [np.copy(i) for i in fretboard_vid]
+for idx, frame_lines in enumerate(lines):
+    for i in range(len(frame_lines)):
+        rho = frame_lines[i][0][0]
+        theta = frame_lines[i][0][1]
+        a = math.cos(theta)
+        b = math.sin(theta)
+        x0 = a * rho
+        y0 = b * rho
+        pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
+        pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
+        cv.line(linesvid[idx], pt1, pt2, (255,255,255), 3, cv.LINE_AA)
 
-if lines is not None:
-    for idx, frame_lines in enumerate(lines):
-        for i in range(0, len(frame_lines)):
-            rho = frame_lines[i][0][0]
-            theta = frame_lines[i][0][1]
-            a = math.cos(theta)
-            b = math.sin(theta)
-            x0 = a * rho
-            y0 = b * rho
-            pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
-            pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
-            cv.line(linesvid[idx], pt1, pt2, (255,255,255), 3, cv.LINE_AA)
+showvid(linesvid, ms=100)
 
-# linesvid = [np.uint8(cv.cvtColor(np.float32(i), cv.COLOR_BGR2GRAY)) for i in linesvid]
+"""
+match vertical lines to fret spacing
+"""
 
-showvid(linesvid)
+
+# get position of lines horizontally (since they must be approximately vertical, the 
+#  rho should be approximately the horizontal distance)
+line_pos = [np.sort(np.array([j[0][0] for j in framelines])) for framelines in lines]
+
+# ratio of fret length to length of next fret, down and up the neck
+D_RATIO = 0.943874312682
+U_RATIO = 1.05946309436
+
+def match_frets(line_pos):
+    """
+    for each pair of lines positions
+    """
+    for i in range(len(line_pos) - 1):
+        for j in range(i+1, i+len(line_pos[i:])):
+            d = line_pos[j] - line_pos[i]
+
+
 
 """
 tried some keypoint matching, but didn't make much progress
