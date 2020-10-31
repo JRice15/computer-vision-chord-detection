@@ -277,18 +277,20 @@ line_pos = [np.unique(np.array([j[0][0] for j in framelines], dtype=int)) for fr
 # factor to be within to be considered a fret match
 fret_close_factor = 0.08
 # min dist to be considered a match, in pixels
-min_fret_close = 1
+min_fret_close = 3
 
 def is_close(real, target, fret_len):
     """
     determine if a line should be considered a match for this fret
     """
-    within = max(min_fret_close, fret_len*fret_close_factor)
-    return abs(real - target) <= within
+    within = np.maximum(min_fret_close, fret_len*fret_close_factor)
+    return np.abs(real - target) <= within
 
 # in pixels. fret distances less than or equal to this num pixels will be ignored
-min_fret = 3
-max_fret = 300
+min_fret = 23
+# frets greater than this are ignored
+max_fret = fretboard_vid[0].shape[1] / 10
+print("max fret", max_fret)
 
 # number of consecutive misses after which to stop searching
 max_miss = 4
@@ -331,23 +333,11 @@ def match_frets(line_pos):
                     l -= dl
                     if l < 0:
                         break
-                    idxL = ok_idx(np.searchsorted(l_arr, l, side="left"))
-                    idxR = ok_idx(idxL + 1)
-                    valL = l_arr[idxL]
-                    valR = l_arr[idxR]
-                    closeL, closeR = False, False
-                    if (closeL := is_close(valL, l, dl)) or (closeR := is_close(valR, l, dl)):
+                    idx = ok_idx(np.searchsorted(l_arr, l, side="left"))
+                    val = l_arr[idx]
+                    if is_close(val, l, dl):
                         misscounter = 0
-                        # save the closer one
-                        if closeL and closeR:
-                            if abs(valL - l) <= abs(valR - l):
-                                jmatches.append(valL)
-                            else:
-                                jmatches.append(valR)
-                        elif closeL:
-                            jmatches.append(valL)
-                        else:
-                            jmatches.append(valR)
+                        jmatches.append(val)
                     else:
                         misscounter += 1
 
@@ -367,23 +357,11 @@ def match_frets(line_pos):
                 while misscounter < max_miss and r < line_pos[-1]:
                     dr *= R_RATIO
                     r += dr
-                    idxL = ok_idx(np.searchsorted(r_arr, r, side="left"))
-                    idxR = ok_idx(idxL + 1)
-                    valL = r_arr[idxL]
-                    valR = r_arr[idxR]
-                    closeL, closeR = False, False
-                    if (closeL := is_close(valL, r, dr)) or (closeR := is_close(valR, r, dr)):
+                    idx = ok_idx(np.searchsorted(r_arr, r, side="left"))
+                    val = r_arr[idx]
+                    if is_close(val, r, dr):
                         misscounter = 0
-                        # save the closer one
-                        if closeL and closeR:
-                            if abs(valL - r) < abs(valR - r):
-                                jmatches.append(valL)
-                            else:
-                                jmatches.append(valR)
-                        elif closeL:
-                            jmatches.append(valL)
-                        else:
-                            jmatches.append(valR)
+                        jmatches.append(val)
                     else:
                         misscounter += 1
             
@@ -397,7 +375,69 @@ def match_frets(line_pos):
     
     return matches
 
-matches = [match_frets(i) for i in line_pos]
+
+def match_frets_v2(line_pos):
+    """
+    quicker (about 2x faster) vectorized version, but more prone to match 
+    incorrect frets out past the fretboard
+    """
+    matches = []
+    # bestij = None
+    for i in range(len(line_pos) - 1):
+        imatches = []
+        # bestj = None
+        for j in range(i+1, len(line_pos)):
+            r = line_pos[j]
+            l = line_pos[i]
+            d = r - l
+
+            targets = [l, r]
+            dl = d
+            if dl <= min_fret or dl >= max_fret:
+                continue
+            while l > 0 and dl > min_fret:
+                dl *= L_RATIO
+                l -= dl
+                targets.insert(0, l)
+            dr = d
+            while r <= line_pos[-1] and dr < max_fret:
+                dr *= R_RATIO
+                r += dr
+                targets.append(r)
+
+            targets = np.array(targets)
+            fret_lens = np.diff(targets)
+            fret_lens = np.append(fret_lens, fret_lens[-1])
+
+            # find the indexes where 'targets' would be inserted in the array.
+            # the closest value to each target must be either the value there or
+            # the value at the index right before
+            indsR = np.searchsorted(line_pos, targets)
+            indsL = indsR - 1
+            indsR = np.minimum(indsR, len(line_pos)-1)
+            indsL = np.maximum(indsL, 0)
+
+            is_fret = np.logical_or(
+                        is_close(line_pos[indsL], targets, fret_lens),
+                        is_close(line_pos[indsR], targets, fret_lens)
+                    )
+            
+            jmatches = targets[is_fret]
+            if len(jmatches) > len(imatches):
+                imatches = jmatches
+
+        if len(imatches) >= len(matches):
+            matches = imatches
+
+    return np.int16(matches)
+
+
+t = time.time()
+matches = [match_frets_v2(i) for i in line_pos]
+print("fret match speed per frame:", (time.time() - t) / len(line_pos))
+
+print("fret matches in each frame:", [len(i) for i in matches])
+
 
 fretvid = [np.copy(i) for i in fretboard_vid]
 
@@ -406,9 +446,8 @@ for i, frame in enumerate(fretvid):
     for x in matches[i]:
         cv.line(frame, (x,0), (x,2000), (0,0,255), 3)
 
+
 showvid(fretvid, ms=800)
-
-
 
 
 """
