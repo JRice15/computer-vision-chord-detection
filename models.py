@@ -45,14 +45,14 @@ def make_model(name, input_shape):
         raise ValueError("no model named '" + name + "'")
 
 
-    
+
 
 
 if __name__ == "__main__":
     '''
     test that the model compiles and such
     '''
-    shape = (400,100,3)
+    shape = (200,1280,3)
 
     model = make_model("xception", shape)
 
