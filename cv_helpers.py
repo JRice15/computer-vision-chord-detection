@@ -19,6 +19,7 @@ def readvid(file):
 
 def writevid(vid, name, flipchannels=True):
     """
+    name: filename to save under (do not include extension)
     flipchannels: bool, true if video is in BGR
     """
     print("writing vid", name+".mp4 ...")

@@ -1,14 +1,19 @@
-import numpy as np
-import time
-import cv2
-import pandas as pd
 import argparse
+import os
+import time
+
+import cv2
+import numpy as np
+import pandas as pd
+
 cv = cv2
+from cv_helpers import *
 
 """
 command line args
 """
 parser = argparse.ArgumentParser()
+parser.add_argument("--name",required=True,help="name to give to this file. include things like what type of guitar, and any other relevant info")
 parser.add_argument("--file",default="chords.xlsx",help="chords excel file")
 args = parser.parse_args()
 
@@ -27,36 +32,42 @@ chords = df.to_numpy()
 
 max_len = max([len(i) for i in chords[:,0]]) + 2
 
-def print_chord(c):
+def chord_repr(c):
     return "{:{max_len}} {}".format(*c, max_len=max_len)
+
+def random_chord():
+    return chords[np.random.choice(len(chords))]
 
 print("available chords:")
 for i in chords:
-    print(print_chord(i))
+    print(chord_repr(i))
 
 
 """
 begin video capture
 """
-cap = cv2.VideoCapture(0)
 
 print("\nA chord will show, and then a countdown from 3. On 0, play the the chord. " 
       "Then, prepare for the next. Using a larger font size in the terminal (CMD PLUS "
       "on my Mac) is probably useful")
-print("\nStarting 10 second pre-preparation time. Make sure the neck of the " 
+print("\nIf you mess up, or are done, do CNTRL-C to keyboard interrupt, and it "
+      "will throw away the last two chords, and save the the rest to 'data/'")
+print("\nStarting pre-preparation countdown. Make sure the neck of the " 
       "guitar is entirely in the frame, and then make sure you can view the terminal")
 
-time.sleep(2)
-
-frame_ind = 0
-frames = []
-countdown = 0
+print("Press Return to continue", end=" ")
+input()
 
 start = time.time()
 def elapsed():
     return time.time() - start
 
-while(True):
+# I think you can change the camera here, if you have multiple
+cap = cv2.VideoCapture(0)
+
+preprep_secs = 10
+countdown = 0
+while elapsed() < preprep_secs:
     # Capture frame-by-frame
     ok, frame = cap.read()
     if not ok:
@@ -65,28 +76,82 @@ while(True):
 
     # Display the resulting frame
     cv2.imshow('frame',frame)
-    if cv2.waitKey(1) != -1:
-        end = time.time()
-        print("ending capture")
-        break
+    cv.waitKey(1)
 
-    t = elapsed()
-    if countdown > 10:
-        print("Starting")
-        countdown = 0
-    elif t >= countdown:
-        print(10 - countdown)
-        countdown += 1
-    
-    
-    
-    
+    if elapsed() > countdown:
+        print(preprep_secs - countdown)
+        countdown += 1  
 
 
+secs_per_chord = 3
+frame_ind = 0
+frames = []
+chord_map = [] # tuples: (index, chord_fingering)
+start = time.time()
+countdown = 0
+very_start_time = time.time()
 
+try:
+    print("Starting...")
+    while(True):
+        # Capture frame-by-frame
+        ok, frame = cap.read()
+        if not ok:
+            print("! frame failed, retrying...")
+            continue
+        # Display the resulting frame
+        cv2.imshow('frame',frame)
+        if cv.waitKey(1) != -1:
+            end = time.time()
+            print("ending capture...")
+            break
+        frames.append(frame)
+        frame_ind += 1
+
+        if elapsed() > countdown:
+            if countdown == 0:
+                chord = random_chord()
+                print("\nNext chord:", chord_repr(chord))
+                print(secs_per_chord)
+                countdown += 1
+            elif countdown >= secs_per_chord:
+                print("Play")
+                chord_map.append((frame_ind, chord[1]))
+                countdown = 0
+                start = time.time()
+            else:
+                print(secs_per_chord - countdown)
+                countdown += 1
+except KeyboardInterrupt:
+    print("\nEnding capture")
 
 # When everything done, release the capture
 cap.release()
 cv2.destroyAllWindows()
 
 
+if len(chord_map) <= 2:
+    print("too short to do anything with. exiting...")
+    exit()
+
+# up until the last two chords
+frames = frames[:chord_map[-2][0]]
+chord_map = chord_map[:-2]
+
+# save data
+os.makedirs("data/", exist_ok=True)
+filename = args.name + "_" + str(int(very_start_time))
+writevid(frames, name='data/'+filename)
+# save npy data as well, as array of strings
+np.save('data/'+filename, np.array(chord_map))
+
+
+print(chord_map)
+
+
+for i, frame in enumerate(frames):
+    title = "none"
+    for j in chord_map:
+        if j[0] > i:
+            title = str(j[1])
+    showim(frame, name=title, ms=100)
