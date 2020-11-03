@@ -21,8 +21,8 @@ def xception(input_shape):
     """
     inpt = Input(input_shape)
     base = keras.applications.Xception(include_top=False, weights=None, 
-                input_shape=input_shape, input_tensor=inpt, pooling='avg')
-    x = base.output
+                input_shape=input_shape, pooling='avg')
+    x = base(inpt)
     x = Dense(256, activation="relu")(x)
     x = Dropout(0.4)(x)
     x = Dense(32, activation="relu")(x)

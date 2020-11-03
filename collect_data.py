@@ -83,7 +83,7 @@ while elapsed() < preprep_secs:
         countdown += 1  
 
 
-secs_per_chord = 3
+secs_per_chord = 4
 frame_ind = 0
 frames = []
 chord_map = [] # tuples: (index, chord_fingering)
@@ -143,15 +143,7 @@ os.makedirs("data/", exist_ok=True)
 filename = args.name + "_" + str(int(very_start_time))
 writevid(frames, name='data/'+filename)
 # save npy data as well, as array of strings
+print("Saving chord data")
 np.save('data/'+filename, np.array(chord_map))
 
 
-print(chord_map)
-
-
-for i, frame in enumerate(frames):
-    title = "none"
-    for j in chord_map:
-        if j[0] > i:
-            title = str(j[1])
-    showim(frame, name=title, ms=100)

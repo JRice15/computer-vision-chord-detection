@@ -33,6 +33,8 @@ def showim(img, name="", ms=1000):
     """
     cv2.imshow(name, img)
     cv2.waitKey(ms)
+    cv.destroyWindow(name)
+    cv.waitKey(1)
 
 def showvid(vid, name="", ms=25):
     """

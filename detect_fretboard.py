@@ -16,7 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--file",default="acoustic_light_short.mov")
 args = parser.parse_args()
 
-vid = readvid(args.file)[:20]
+vid = readvid(args.file)[50:100]
 # add neck image as last in pipeline
 # vid.append(cv.imread("neck_dark.jpg"))
 
@@ -62,12 +62,15 @@ lines = [i if i is not None else [] for i in lines]
 # remove mostly vertical lines and take the first 500; they should be returned in order of confidence
 lines = [[j for j in framelines if horizontal_ish(j[0][1])][:500] for framelines in lines]
 
-def findparallel(lines, theta_threshold=3, maxn=None):
+def findparallel(lines, theta_threshold=3, rho_threshold=50, maxn=None):
     """
     args:
         theta_threshold: degrees, the threshold for how close in angle lines 
             have to be to be parallel
+        rho_threshold: pixels, distance to be within
         maxn: number of top line bundles to find in each frame
+    returns:
+        for each frame, a set of bundles of lines. each bundle is parallell 
     """
     theta_threshold = np.pi/180 * theta_threshold
     vid_lines = []
@@ -78,53 +81,63 @@ def findparallel(lines, theta_threshold=3, maxn=None):
             for j, l2 in enumerate(frame_lines):
                 if (i == j):
                     continue
-                if (abs(l1[0][1] - l2[0][1]) <= theta_threshold):          
+                if (abs(l1[0][1] - l2[0][1]) <= theta_threshold) and \
+                        (abs(l1[0][0] - l2[0][0]) < rho_threshold):
                     this_lines.append(l2)
             all_lines.append(this_lines)
         # sort by number of lines found in each bundle, take top maxn
         sorted(all_lines, key=lambda x: len(x), reverse=True)
         if maxn is not None:
             all_lines = all_lines[:maxn]
-        joined = []
-        for x in all_lines:
-            joined += x
-        vid_lines.append(joined)
+        # joined = []
+        # for x in all_lines:
+        #     joined += x
+        vid_lines.append(all_lines)
     return vid_lines
 
-lines = findparallel(lines, maxn=1)
+line_bundles = findparallel(lines, maxn=20)
+
+def draw_lines(lines, frame):
+    """
+    draw a set of lines on a frame
+    """
+    for i in range(0, len(lines)):
+        rho = lines[i][0][0]
+        theta = lines[i][0][1]
+        a = math.cos(theta)
+        b = math.sin(theta)
+        x0 = a * rho
+        y0 = b * rho
+        pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
+        pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
+        cv.line(frame, pt1, pt2, (255,255,255), 3, cv.LINE_AA)
+
+linesvid = [np.copy(i) for i in vid]
+linesvid_black = [np.copy(i) for i in black]
+
+for i,framelines in enumerate(line_bundles):
+    """
+    write the lines onto a black video
+    """
+    for bundle in framelines:
+        draw_lines(bundle, linesvid[i])
+        draw_lines(bundle, linesvid_black[i])
+        # showim(linesvid[i],name=str(i))
 
 
-"""
-write the lines onto a black video
-"""
-# linesvid = [np.copy(i) for i in vid]
-linesvid = black
+showvid(linesvid)
 
-if lines is not None:
-    for idx, frame_lines in enumerate(lines):
-        for i in range(0, len(frame_lines)):
-            rho = frame_lines[i][0][0]
-            theta = frame_lines[i][0][1]
-            a = math.cos(theta)
-            b = math.sin(theta)
-            x0 = a * rho
-            y0 = b * rho
-            pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
-            pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
-            cv.line(linesvid[idx], pt1, pt2, (255,255,255), 3, cv.LINE_AA)
-
-linesvid = [np.uint8(cv.cvtColor(np.float32(i), cv.COLOR_BGR2GRAY)) for i in linesvid]
-
-# showvid(linesvid)
 
 """
 find the contours of the linesvid. It should find a big bounding box around the big
-cluster of the fretboards, so we take the contour with the biggest area
+cluster of the fretboard, so we take the contour with the biggest area
 """
+linesvid_black = [np.uint8(cv.cvtColor(np.float32(i), cv.COLOR_BGR2GRAY)) for i in linesvid_black]
+
 boxes_vid = [np.copy(i) for i in vid]
 
 boxes = []
-for i, frame in enumerate(linesvid):
+for i, frame in enumerate(linesvid_black):
     contours, heirarchy = cv2.findContours(frame, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     im = boxes_vid[i]
     # get largest contour
@@ -243,25 +256,53 @@ def vertical(angle, threshhold=3):
         return True
     return False
     
-lines = [cv.HoughLines(i, 1, np.pi/180, 25, None, 0, 0) for i in edges]
-lines = [i if i is not None else [] for i in lines]
+def vertical_p(x1, y1, x2, y2, *, threshhold=3):
+    """
+    find vertical lines within <threshhold> degrees, from their endpoints 
+    """
+    # convert to vertical slope (x/y)
+    threshhold = abs(1 / math.tan(threshhold))
+    # find vertical lines (either up or down)
+    slope = abs(x1 - x2) / max(abs(y1 - y2), 0.00001)
+    if slope < threshhold:
+        return True
+    return False
 
-# find vertical lines, take first top_n (as the lines are returned in order of confidence)
+# flag for which line style to do
+prob_lines = True
 top_n = 150
-lines = [[j for j in framelines if vertical(j[0][1])][:top_n] for framelines in lines]
 
 linesvid = [np.copy(i) for i in fretboard_vid]
-for idx, frame_lines in enumerate(lines):
-    for i in range(len(frame_lines)):
-        rho = frame_lines[i][0][0]
-        theta = frame_lines[i][0][1]
-        a = math.cos(theta)
-        b = math.sin(theta)
-        x0 = a * rho
-        y0 = b * rho
-        pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
-        pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
-        cv.line(linesvid[idx], pt1, pt2, (255,255,255), 3, cv.LINE_AA)
+
+
+if prob_lines:
+    lines = [cv.HoughLinesP(i, 1, np.pi/180, 10, None, 50, 10) for i in edges]
+    lines = [i if i is not None else [] for i in lines]
+    # find vertical lines, take first top_n (as the lines are returned in order of confidence)
+    lines = [[j for j in framelines if vertical_p(*j[0])][:top_n] for framelines in lines]
+
+    for idx, framelines in enumerate(lines):
+        for i in range(len(framelines)):
+            l = framelines[i][0]
+            cv.line(linesvid[idx], (l[0], l[1]), (l[2], l[3]), (255,255,255), 3, cv.LINE_AA)
+
+else:
+    lines = [cv.HoughLines(i, 1, np.pi/180, 25, None, 0, 0) for i in edges]
+    lines = [i if i is not None else [] for i in lines]
+    # find vertical lines, take first top_n (as the lines are returned in order of confidence)
+    lines = [[j for j in framelines if vertical(j[0])][:top_n] for framelines in lines]
+
+    for idx, frame_lines in enumerate(lines):
+        for i in range(len(frame_lines)):
+            rho = frame_lines[i][0][0]
+            theta = frame_lines[i][0][1]
+            a = math.cos(theta)
+            b = math.sin(theta)
+            x0 = a * rho
+            y0 = b * rho
+            pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
+            pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
+            cv.line(linesvid[idx], pt1, pt2, (255,255,255), 3, cv.LINE_AA)
 
 showvid(linesvid, ms=100)
 
@@ -270,9 +311,13 @@ match vertical lines to fret spacing
 """
 
 
-# get position of lines horizontally (since they must be approximately vertical, the 
-#  rho should be approximately the horizontal distance). np.unique also sorts
-line_pos = [np.unique(np.array([j[0][0] for j in framelines], dtype=int)) for framelines in lines]
+if prob_lines:
+    # get horiz position, by averaging x coordinates of endpoints
+    line_pos = [np.unique(np.array([(j[0][0]+j[0][2])/2 for j in framelines], dtype=int)) for framelines in lines]
+else:
+    # get position of lines horizontally (since they must be approximately vertical, the 
+    #  rho should be approximately the horizontal distance). np.unique also sorts
+    line_pos = [np.unique(np.array([j[0][0] for j in framelines], dtype=int)) for framelines in lines]
 
 # factor to be within to be considered a fret match
 fret_close_factor = 0.08
