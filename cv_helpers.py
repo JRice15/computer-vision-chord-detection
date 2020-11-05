@@ -19,9 +19,12 @@ def readvid(file):
 
 def writevid(vid, name, flipchannels=True):
     """
-    name: filename to save under (do not include extension)
+    name: filename to save under
     flipchannels: bool, true if video is in BGR
     """
+    reverse_ind = name[::-1].find(".")
+    if reverse_ind != -1:
+        name = name[:-reverse_ind-1]
     print("writing vid", name+".mp4 ...")
     vid = np.array(vid)
     vid = vid[...,::-1]
@@ -32,6 +35,7 @@ def showim(img, name="", ms=1000):
     show image with a good wait time
     """
     cv2.imshow(name, img)
+    cv.moveWindow(name, 0, 0)
     cv2.waitKey(ms)
     cv.destroyWindow(name)
     cv.waitKey(1)
@@ -42,6 +46,7 @@ def showvid(vid, name="", ms=25):
     """
     for frame in vid:
         cv.imshow(name, frame)
+        cv.moveWindow(name, 0, 0)
         if cv.waitKey(ms) != -1:
             break
     cv.destroyWindow(name)

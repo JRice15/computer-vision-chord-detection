@@ -14,9 +14,13 @@ from cv_helpers import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--file",default="acoustic_light_short.mov")
+parser.add_argument("--outfile",default="fretboard_rot",help="place to store rotated fretboard vid")
+parser.add_argument("--full",action="store_true",default=False)
 args = parser.parse_args()
 
-vid = readvid(args.file)[50:100]
+vid = readvid(args.file)
+if not args.full:
+    vid = vid[:30]
 # add neck image as last in pipeline
 # vid.append(cv.imread("neck_dark.jpg"))
 
@@ -41,7 +45,7 @@ edges = [cv.Canny(i, 10, 70) for i in blurred]
 # edges = [cv.dilate(i, np.ones((3,3),np.uint8),iterations=1) for i in edges]
 # edges = [cv.erode(i, np.ones((5,5),np.uint8),iterations=1) for i in edges]
 
-# showvid(edges)
+showvid(edges)
 
 # conts = [cv.findContours(i, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)[0] for i in edges]
 
@@ -151,8 +155,6 @@ for i, frame in enumerate(linesvid_black):
 
 
 # showvid(boxes_vid)
-# writevid(boxes_vid, "fretboard_bound")
-
 
 """
 smoothing
@@ -232,7 +234,25 @@ for i, frame in enumerate(vid):
     # TODO extend the bottom, since it tends to miss the smaller strings more often?
     fretboard_vid.append(rot_frame)
 
-showvid(fretboard_vid, name="fretboard", ms=50)
+
+def pad_to_target(frame, target_x, target_y):
+    top = target_y - frame.shape[0]
+    left = target_x - frame.shape[1]
+    bottom = (top + 1) // 2
+    right = (left + 1) // 2
+    top = top // 2
+    left = left // 2
+    return cv.copyMakeBorder(frame, top, bottom, left, right, cv.BORDER_CONSTANT, 0)
+
+max_y = max([i.shape[0] for i in fretboard_vid])
+max_x = max([i.shape[1] for i in fretboard_vid])
+fretboard_vid = [pad_to_target(i, max_x, max_y) for i in fretboard_vid]
+
+showvid(fretboard_vid, name="fretboard", ms=200)
+
+os.makedirs("data", exist_ok=True)
+writevid(fretboard_vid, args.outfile)
+
 
 """
 find vertical lines that should correspond to frets
@@ -269,7 +289,7 @@ def vertical_p(x1, y1, x2, y2, *, threshhold=3):
     return False
 
 # flag for which line style to do
-prob_lines = True
+prob_lines = False
 top_n = 150
 
 linesvid = [np.copy(i) for i in fretboard_vid]
@@ -290,7 +310,7 @@ else:
     lines = [cv.HoughLines(i, 1, np.pi/180, 25, None, 0, 0) for i in edges]
     lines = [i if i is not None else [] for i in lines]
     # find vertical lines, take first top_n (as the lines are returned in order of confidence)
-    lines = [[j for j in framelines if vertical(j[0])][:top_n] for framelines in lines]
+    lines = [[j for j in framelines if vertical(j[0][1])][:top_n] for framelines in lines]
 
     for idx, frame_lines in enumerate(lines):
         for i in range(len(frame_lines)):
@@ -304,7 +324,7 @@ else:
             pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
             cv.line(linesvid[idx], pt1, pt2, (255,255,255), 3, cv.LINE_AA)
 
-showvid(linesvid, ms=100)
+showvid(linesvid)
 
 """
 match vertical lines to fret spacing
@@ -492,7 +512,7 @@ for i, frame in enumerate(fretvid):
         cv.line(frame, (x,0), (x,2000), (0,0,255), 3)
 
 
-showvid(fretvid, ms=800)
+showvid(fretvid, ms=200)
 
 
 """

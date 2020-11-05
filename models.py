@@ -34,6 +34,26 @@ def xception(input_shape):
 
     return Model(inpt, x)
 
+def mobilenetv2(input_shape):
+    """
+    keras mobilenetv2
+    """
+    inpt = Input(input_shape)
+    base = keras.applications.MobileNetV2(include_top=False, weights=None, 
+                input_shape=input_shape, pooling='avg')
+    x = base(inpt)
+    x = Dense(256, activation="relu")(x)
+    x = Dropout(0.4)(x)
+    x = Dense(32, activation="relu")(x)
+    x = Dense(6)(x)
+    # sigmoid limits to between 0 and 1. Then we multiply by the constant to
+    # allow a range from 0 to MAX_FRET to be predicted for each string
+    x = Activation('sigmoid')(x)
+    x = Lambda(lambda v: MAX_FRET * v)(x)
+
+    return Model(inpt, x)
+
+
 def make_model(name, input_shape):
     """
     get model from case insensitive name
@@ -41,6 +61,8 @@ def make_model(name, input_shape):
     name = name.lower()
     if name == "xception":
         return xception(input_shape)
+    if name == "mobilenetv2":
+        return mobilenetv2(input_shape)
     else:
         raise ValueError("no model named '" + name + "'")
 

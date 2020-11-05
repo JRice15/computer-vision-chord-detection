@@ -51,7 +51,7 @@ print("\nA chord will show, and then a countdown from 3. On 0, play the the chor
       "Then, prepare for the next. Using a larger font size in the terminal (CMD PLUS "
       "on my Mac) is probably useful")
 print("\nIf you mess up, or are done, do CNTRL-C to keyboard interrupt, and it "
-      "will throw away the last two chords, and save the the rest to 'data/'")
+      "will throw away the last two chords, and save the the rest to 'raw_data/'")
 print("\nStarting pre-preparation countdown. Make sure the neck of the " 
       "guitar is entirely in the frame, and then make sure you can view the terminal")
 
@@ -139,11 +139,12 @@ frames = frames[:chord_map[-2][0]]
 chord_map = chord_map[:-2]
 
 # save data
+os.makedirs("raw_data/", exist_ok=True)
 os.makedirs("data/", exist_ok=True)
 filename = args.name + "_" + str(int(very_start_time))
-writevid(frames, name='data/'+filename)
+writevid(frames, name='raw_data/'+filename)
 # save npy data as well, as array of strings
 print("Saving chord data")
-np.save('data/'+filename, np.array(chord_map))
+np.save('raw_data/'+filename, np.array(chord_map))
 
 
