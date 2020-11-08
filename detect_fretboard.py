@@ -14,18 +14,14 @@ from cv_helpers import *
 
 
 
-def edge_process(vid, edge_threshold=70, show_result=False):
+def edge_process(vid, edge_threshold=70, blur=True, show_result=False):
     """
     grayscale and blur, and find edges
     """
+    print("Finding edges")
     gray = [cv.cvtColor(i, cv.COLOR_BGR2GRAY) for i in vid]
-    blurred = [cv.GaussianBlur(i, (5,5), 2) for i in gray]
-
-    # thresh = [cv.adaptiveThreshold(i, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 23, 0) for i in blurred]
-    # thresh_vid = [
-    #     cv2.threshold(i, 28, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1] for i in blurred
-    # ]
-    # showvid(thresh_vid)
+    if blur:
+        blurred = [cv.GaussianBlur(i, (5,5), 2) for i in gray]
 
     """
     edge detection. the second number is the main threshold (lower => more edges, more noise)
@@ -48,6 +44,7 @@ def find_lines(edges, orig_vid, show_result=False):
         linesvid: black video with white lines drawn on
         lines
     """
+    print("Finding horizontal lines")
 
     def horizontal_ish(angle):
         """
@@ -144,6 +141,8 @@ def find_contours(linesvid, vid, show_result=False):
     returns:
         bounding boxes
     """
+    print("Finding bounding boxes")
+
     boxes_vid = [np.copy(i) for i in vid]
 
     boxes = []
@@ -174,6 +173,8 @@ def smooth_bounding_boxes(boxes, orig_vid, show_result=True):
     returns:
         bounding boxes
     """
+    print("Smoothing bounding boxes")
+
     # span is number of frames on each side to average the bounding boxes of
     span = 3
     # num_outliers number of highest and lowest to remove before averaging
@@ -229,6 +230,8 @@ def rot_and_crop(boxes, lines, vid, show_result=False):
     returns:
         rotated and cropped vid
     """
+    print("Rotating and cropping to fretboard")
+
     def rotate_image(image, angle):
         image_center = tuple(np.array(image.shape[1::-1]) / 2)
         rot_mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
@@ -265,8 +268,13 @@ def rot_and_crop(boxes, lines, vid, show_result=False):
         left = left // 2
         return cv.copyMakeBorder(frame, top, bottom, left, right, cv.BORDER_CONSTANT, 0)
 
+    # find target shape (has to be divisible by 2 to write out)
     max_y = max([i.shape[0] for i in fretboard_vid])
+    if max_y % 2 == 1:
+        max_y += 1
     max_x = max([i.shape[1] for i in fretboard_vid])
+    if max_x % 2 == 1:
+        max_x += 1
     fretboard_vid = [pad_to_target(i, max_x, max_y) for i in fretboard_vid]
 
     if show_result:
@@ -285,6 +293,7 @@ def find_vert_lines(edges, fretboard_vid, prob_lines=False, show_result=False):
     returns:
         line positions: x coords for all lines in each frame
     """
+    print("Finding vertical lines")
 
     def vertical(angle, threshhold=3):
         """
@@ -359,6 +368,8 @@ def match_frets(line_pos, fretboard_vid, show_result=False):
     """
     match vertical lines to fret spacing
     """
+    print("Finding frets")
+
     width = fretboard_vid[0].shape[1]
 
     # factor to be within to be considered a fret match
@@ -539,34 +550,57 @@ def match_frets(line_pos, fretboard_vid, show_result=False):
 
 
 
+class MyArgs:
+
+    def __init__(self, kwargs_dict):
+        for k,v in kwargs_dict.items():
+            setattr(self, k, v)
 
 
-def main():
+def main(**kwargs):
+    """
+    args (either to call, or supplied in command line):
+        file: filename to read in
+        outfile: filename to save rotated and cropped fretboard vid
+        full: whether to process the full video
+        nofrets: whether to not do fret processing
+        show: whether to show videos during processing
+    """
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--file",default="acoustic_light_short.mov")
-    parser.add_argument("--outfile",default="fretboard_rotated",help="place to store rotated fretboard vid")
-    parser.add_argument("--full",action="store_true",default=False)
-    args = parser.parse_args()
+    if kwargs:
+        args = MyArgs(kwargs)
+    else:
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--file",default="acoustic_light_short.mov")
+        parser.add_argument("--outfile",default="fretboard_rotated",help="place to store rotated fretboard vid")
+        parser.add_argument("--full",action="store_true",default=False)
+        parser.add_argument("--nofrets",action="store_true",default=False)
+        parser.add_argument("--show",action="store_true",default=False)
+        args = parser.parse_args()
 
     vid = readvid(args.file)
     if not args.full:
         vid = vid[:30]
 
-    showvid(vid)
+    if False and args.show:
+        showvid(vid)
 
-    edges = edge_process(vid, show_result=True)
-    linesvid, lines = find_lines(edges, vid, show_result=True)
-    boxes = find_contours(linesvid, vid, show_result=True)
-    boxes = smooth_bounding_boxes(boxes, vid, show_result=True)
-    fretboard_vid = rot_and_crop(boxes, lines, vid, show_result=True)
+    edges = edge_process(vid, show_result=False and args.show)
+    linesvid, lines = find_lines(edges, vid, show_result=True and args.show)
+    boxes = find_contours(linesvid, vid, show_result=False and args.show)
+    boxes = smooth_bounding_boxes(boxes, vid, show_result=True and args.show)
+    fretboard_vid = rot_and_crop(boxes, lines, vid, show_result=True and args.show)
 
     os.makedirs("data", exist_ok=True)
     writevid(fretboard_vid, args.outfile)
 
-    fretboard_edges = edge_process(fretboard_vid, edge_threshold=50)
-    line_positions = find_vert_lines(fretboard_edges, fretboard_vid, prob_lines=False)
-    matches = match_frets(line_positions, fretboard_vid)
+    if not args.nofrets:
+        fretboard_edges = edge_process(fretboard_vid, edge_threshold=50,
+                            show_result=False and args.show)
+        line_positions = find_vert_lines(fretboard_edges, fretboard_vid, 
+                            prob_lines=False, show_result=False and args.show)
+        matches = match_frets(line_positions, fretboard_vid, 
+                    show_result=True and args.show)
 
 
 

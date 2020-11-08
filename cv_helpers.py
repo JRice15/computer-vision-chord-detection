@@ -34,11 +34,19 @@ def writevid(vid, name, flipchannels=True):
     name: filename to save under
     flipchannels: bool, true if video is in BGR
     """
-    name = strip_extension(name)
-    print("writing vid", name+".mp4 ...")
+    name = strip_extension(name)+".mp4"
+    print("writing vid", name, "...")
     vid = np.array(vid)
     vid = vid[...,::-1]
-    skvideo.io.vwrite(name+".mp4", vid, outputdict={"-pix_fmt": "yuv420p"})
+    skvideo.io.vwrite(name, vid, 
+        outputdict={"-pix_fmt": "yuv420p"},
+        backend='ffmpeg')
+    # fourcc = cv.CV_FOURCC(*"mp4v")
+    # writer = cv.VideoWriter()
+    # writer.open(name, fourcc, 20.0, vid[0].shape[:2], True)
+    # for frame in vid:
+    #     writer.write(frame)
+    # writer.release()
 
 def showim(img, name="", ms=1000):
     """
