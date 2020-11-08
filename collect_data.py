@@ -138,13 +138,14 @@ if len(chord_map) <= 2:
 frames = frames[:chord_map[-2][0]]
 chord_map = chord_map[:-2]
 
-# save data
+# save vid data
 os.makedirs("raw_data/", exist_ok=True)
-os.makedirs("data/", exist_ok=True)
 filename = args.name + "_" + str(int(very_start_time))
 writevid(frames, name='raw_data/'+filename)
+
 # save npy data as well, as array of strings
 print("Saving chord data")
-np.save('raw_data/'+filename, np.array(chord_map))
+os.makedirs("data/", exist_ok=True)
+np.save('data/'+filename, np.array(chord_map))
 
 

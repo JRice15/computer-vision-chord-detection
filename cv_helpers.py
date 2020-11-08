@@ -2,10 +2,22 @@ import cv2
 cv = cv2
 import skvideo.io
 import numpy as np
+import os
 
 """
 basic helper functions
 """
+
+def split_path(path):
+    root, file = os.path.split(path)
+    name, ext = os.path.splitext(file)
+    return root, name, ext
+
+def strip_extension(name):
+    reverse_ind = name[::-1].find(".")
+    if reverse_ind != -1:
+        name = name[:-reverse_ind-1]
+    return name
 
 def readvid(file):
     vid = cv.VideoCapture(file)
@@ -22,9 +34,7 @@ def writevid(vid, name, flipchannels=True):
     name: filename to save under
     flipchannels: bool, true if video is in BGR
     """
-    reverse_ind = name[::-1].find(".")
-    if reverse_ind != -1:
-        name = name[:-reverse_ind-1]
+    name = strip_extension(name)
     print("writing vid", name+".mp4 ...")
     vid = np.array(vid)
     vid = vid[...,::-1]
