@@ -12,7 +12,8 @@ import numpy as np
 
 from cv_helpers import *
 
-
+print("Your openCV version:", cv.__version__)
+print("It might not work if it isnt 4.5.x")
 
 def edge_process(vid, edge_threshold=70, blur=True, show_result=False):
     """
@@ -50,15 +51,21 @@ def find_lines(edges, orig_vid, show_result=False):
         """
         filter angles within 45deg of horizontal
         """
-        if (np.pi*1/4 < angle < np.pi*3/4) or (np.pi*1/4 < angle < np.pi*3/4):
+        if (np.pi*1/4 < angle < np.pi*3/4):
             return True
         return False
 
-    lines = [cv.HoughLines(i, 1, np.pi/180, 100, None, 0, 0) for i in edges]
-    lines = [i if i is not None else [] for i in lines]
+    def hough(im):
+        lines = cv.HoughLines(im, 
+                    rho=3, 
+                    theta=np.pi/180, 
+                    threshold=300)
+        lines = [] if lines is None else lines
+        # remove mostly vertical lines and take the first 500; they should be returned in order of confidence
+        lines = [j for j in lines if horizontal_ish(j[0][1])][:500]
+        return lines
 
-    # remove mostly vertical lines and take the first 500; they should be returned in order of confidence
-    lines = [[j for j in framelines if horizontal_ish(j[0][1])][:500] for framelines in lines]
+    lines = [hough(i) for i in edges]
 
     def findparallel(lines, theta_threshold=3, rho_threshold=200, maxn=None):
         """
@@ -110,7 +117,8 @@ def find_lines(edges, orig_vid, show_result=False):
             pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
             cv.line(frame, pt1, pt2, (255,255,255), 3, cv.LINE_AA)
 
-    orig_vid = [np.copy(i) for i in orig_vid]
+    if show_result:
+        orig_vid = [np.copy(i) for i in orig_vid]
     linesvid = [np.zeros_like(i) for i in orig_vid]
 
     for i,framelines in enumerate(line_bundles):
@@ -118,9 +126,10 @@ def find_lines(edges, orig_vid, show_result=False):
         write the lines onto a black video
         """
         for bundle in framelines:
-            draw_lines(bundle, orig_vid[i])
+            if show_result:
+                draw_lines(bundle, orig_vid[i])
             draw_lines(bundle, linesvid[i])
-        # showim(linesvid[i],name=str(i))
+            # showim(linesvid[i],name=str(i))
 
     linesvid = [np.uint8(cv.cvtColor(np.float32(i), cv.COLOR_BGR2GRAY)) for i in linesvid]
 
@@ -143,23 +152,25 @@ def find_contours(linesvid, vid, show_result=False):
     """
     print("Finding bounding boxes")
 
-    boxes_vid = [np.copy(i) for i in vid]
+    if show_result:
+        boxes_vid = [np.copy(i) for i in vid]
 
     boxes = []
     for i, frame in enumerate(linesvid):
-        _, contours, heirarchy = cv2.findContours(frame, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        im = boxes_vid[i]
+        contours, heirarchy = cv2.findContours(frame, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         # get largest contour
         cnt = max(contours, key=cv.contourArea)
         # find its (potentially nonvertical) bounding rect
         rect = cv2.minAreaRect(cnt)
         box = cv.boxPoints(rect)
         box = np.int0(box)
-        cv2.drawContours(im,[box],0,(0,0,255),2)
         boxes.append(box)
+        if show_result:
+            im = boxes_vid[i]
+            cv2.drawContours(im,[box],0,(0,0,255),2)
 
     if show_result:
-        showvid(boxes_vid, "bounding boxes")
+        showvid(boxes_vid, "bounding boxes", ms=100)
     
     return boxes
 
@@ -180,7 +191,9 @@ def smooth_bounding_boxes(boxes, orig_vid, show_result=True):
     # num_outliers number of highest and lowest to remove before averaging
     num_outliers = 0
     smoothed_boxes = []
-    boxes_vid = [np.copy(i) for i in orig_vid]
+
+    if show_result:
+        boxes_vid = [np.copy(i) for i in orig_vid]
 
     assert len(boxes) >= (2 * span + 1)
     for i, box in enumerate(boxes):
@@ -213,12 +226,14 @@ def smooth_bounding_boxes(boxes, orig_vid, show_result=True):
         newbox = np.mean(selection, axis=0)
         newbox = np.int0(newbox)
         smoothed_boxes.append(newbox)
-        cv2.drawContours(boxes_vid[i],[newbox],0,(0,0,255),2)
+        if show_result:
+            cv2.drawContours(boxes_vid[i],[newbox],0,(0,0,255),2)
 
     if show_result:
-        showvid(boxes_vid, name="smoothed")
+        showvid(boxes_vid, name="smoothed", ms=100)
 
     return smoothed_boxes
+
 
 def rot_and_crop(boxes, lines, vid, show_result=False):
     """
@@ -238,26 +253,58 @@ def rot_and_crop(boxes, lines, vid, show_result=False):
         result = cv2.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR)
         return result
 
+    def rotate_points(pts, p0, a):
+        """
+        rotate a set of points, like a contour, around p0
+        returns:
+            lists of xs, ys
+        """
+        x1, y1 = pts[:,0], pts[:,1]
+        x0, y0 = p0
+        x2 = ((x1 - x0) * np.cos(a)) - ((y1 - y0) * np.sin(a)) + x0
+        y2 = ((x1 - x0) * np.sin(a)) + ((y1 - y0) * np.cos(a)) + y0
+        return np.int0(x2), np.int0(y2)
+
+    center = (vid[0].shape[1]//2, vid[0].shape[0]//2)
     fretboard_vid = []
     for i, frame in enumerate(vid):
-        radians = np.mean([l[0][1] for l in lines[i]])
-        degrees = np.degrees(radians) - 90
-        mask = np.zeros(frame.shape)
-        cv2.drawContours(mask, [boxes[i]], 0, (255,255,255), -1)
+        radians = np.mean([l[0][1] for l in lines[i]]) - (np.pi * 1/2)
+        degrees = np.degrees(radians)
+        # mask = np.zeros(frame.shape)
+        # box = np.vstack(rotate_points(boxes[i], center, -radians)).T
+        # print(box)
+        # cv2.drawContours(mask, [box], 0, (255,255,255), -1)
+        # cv2.drawContours(mask, [boxes[i]], 0, (255,255,255), -1)
 
+        # showim(mask)
         rot_frame = rotate_image(frame, degrees)
-        rot_mask = rotate_image(mask, degrees)
+        # rot_mask = rotate_image(mask, degrees)
+        # showim(rot_frame)
 
-        y,x,z = np.nonzero(rot_mask)
-        if len(np.squeeze(y)) == 0:
-            # bad frame, no box found
-            continue
-        (topy, topx) = (np.min(y), np.min(x))
-        (bottomy, bottomx) = (np.max(y), np.max(x))
+        # ys,xs,z = np.nonzero(rot_mask)
+        # if len(np.squeeze(y)) == 0:
+        #     # bad frame, no box found
+        #     continue
+        xs, ys = rotate_points(boxes[i], center, -radians)
+        topy = max(0, np.min(ys))
+        topx = max(0, np.min(xs))
+        bottomy = np.max(ys)
+        bottomx = np.max(xs)
         rot_frame = rot_frame[topy:bottomy+1, topx:bottomx+1]
         # TODO extend the bottom, since it tends to miss the smaller strings more often?
         fretboard_vid.append(rot_frame)
 
+    if show_result:
+        showvid(fretboard_vid, name="fretboard", ms=200)
+
+    return fretboard_vid
+
+
+def normalize_shape(fretboard_vid):
+    """
+    make all frames the same shape by padding zeroes to fit the max frame size
+    """
+    print("Normalizing frames to consistent shape")
 
     def pad_to_target(frame, target_x, target_y):
         top = target_y - frame.shape[0]
@@ -276,9 +323,6 @@ def rot_and_crop(boxes, lines, vid, show_result=False):
     if max_x % 2 == 1:
         max_x += 1
     fretboard_vid = [pad_to_target(i, max_x, max_y) for i in fretboard_vid]
-
-    if show_result:
-        showvid(fretboard_vid, name="fretboard", ms=200)
 
     return fretboard_vid
 
@@ -328,28 +372,30 @@ def find_vert_lines(edges, fretboard_vid, prob_lines=False, show_result=False):
         # find vertical lines, take first top_n (as the lines are returned in order of confidence)
         lines = [[j for j in framelines if vertical_p(*j[0])][:top_n] for framelines in lines]
 
-        for idx, framelines in enumerate(lines):
-            for i in range(len(framelines)):
-                l = framelines[i][0]
-                cv.line(linesvid[idx], (l[0], l[1]), (l[2], l[3]), (255,255,255), 3, cv.LINE_AA)
+        if show_result:
+            for idx, framelines in enumerate(lines):
+                for i in range(len(framelines)):
+                    l = framelines[i][0]
+                    cv.line(linesvid[idx], (l[0], l[1]), (l[2], l[3]), (255,255,255), 3, cv.LINE_AA)
 
     else:
         lines = [cv.HoughLines(i, 1, np.pi/180, 25, None, 0, 0) for i in edges]
         lines = [i if i is not None else [] for i in lines]
         # find vertical lines, take first top_n (as the lines are returned in order of confidence)
-        lines = [[j for j in framelines if vertical(j[0][1])][:top_n] for framelines in lines]
+        # lines = [[j for j in framelines if vertical(j[0][1])][:top_n] for framelines in lines]
 
-        for idx, frame_lines in enumerate(lines):
-            for i in range(len(frame_lines)):
-                rho = frame_lines[i][0][0]
-                theta = frame_lines[i][0][1]
-                a = math.cos(theta)
-                b = math.sin(theta)
-                x0 = a * rho
-                y0 = b * rho
-                pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
-                pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
-                cv.line(linesvid[idx], pt1, pt2, (255,255,255), 3, cv.LINE_AA)
+        if show_result:
+            for idx, frame_lines in enumerate(lines):
+                for i in range(len(frame_lines)):
+                    rho = frame_lines[i][0][0]
+                    theta = frame_lines[i][0][1]
+                    a = math.cos(theta)
+                    b = math.sin(theta)
+                    x0 = a * rho
+                    y0 = b * rho
+                    pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
+                    pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
+                    cv.line(linesvid[idx], pt1, pt2, (255,255,255), 3, cv.LINE_AA)
 
     if show_result:
         showvid(linesvid, "vert_lines")
@@ -557,6 +603,18 @@ class MyArgs:
             setattr(self, k, v)
 
 
+
+def timer(name="", _cache=[], clear=False):
+    if clear:
+        return _cache.clear()
+    if not _cache:
+        _cache.append(time.time())
+    else:
+        t = time.time()
+        print(" ", round(t - _cache[0], 3), "sec", name)
+        _cache[0] = t
+
+
 def main(**kwargs):
     """
     args (either to call, or supplied in command line):
@@ -580,28 +638,52 @@ def main(**kwargs):
 
     vid = readvid(args.file)
     if not args.full:
-        vid = vid[:30]
+        vid = vid[:50]
+    print(len(vid), "frames,", vid[0].shape)
+    print("Expected time:", round(5.4/100 * len(vid) / 60, 2), "minutes")
+    start = time.time()
 
     if False and args.show:
         showvid(vid)
 
-    edges = edge_process(vid, show_result=False and args.show)
-    linesvid, lines = find_lines(edges, vid, show_result=True and args.show)
-    boxes = find_contours(linesvid, vid, show_result=False and args.show)
-    boxes = smooth_bounding_boxes(boxes, vid, show_result=True and args.show)
-    fretboard_vid = rot_and_crop(boxes, lines, vid, show_result=True and args.show)
+    # process in batches of 500, cuz allocating a ton of frames all at once is too expensive
+    timer()
+    fretboard_vid = []
+    for i in range(0, len(vid), 500):
+        print("\nFrames", i, "through", i+500)
+        batch = vid[i:i+500]
+        edges = edge_process(batch, show_result=False and args.show)
+        timer()
+        linesvid, lines = find_lines(edges, batch, show_result=False and args.show)
+        timer()
+        boxes = find_contours(linesvid, batch, show_result=False and args.show)
+        timer()
+        boxes = smooth_bounding_boxes(boxes, batch, show_result=False and args.show)
+        timer()
+        fretboard_batch = rot_and_crop(boxes, lines, batch, show_result=True and args.show)
+        timer()
+        fretboard_vid += fretboard_batch
+    
+    fretboard_vid = normalize_shape(fretboard_vid)
+    timer()
 
     os.makedirs("data", exist_ok=True)
     writevid(fretboard_vid, args.outfile)
+    timer()
 
     if not args.nofrets:
         fretboard_edges = edge_process(fretboard_vid, edge_threshold=50,
                             show_result=False and args.show)
+        timer()
         line_positions = find_vert_lines(fretboard_edges, fretboard_vid, 
                             prob_lines=False, show_result=False and args.show)
+        timer()
         matches = match_frets(line_positions, fretboard_vid, 
                     show_result=True and args.show)
+        timer()
 
+    print(round((time.time() - start) / 60, 2), "minutes elapsed")
+    timer(clear=True)
 
 
 if __name__ == "__main__":

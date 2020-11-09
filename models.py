@@ -70,23 +70,3 @@ def make_model(name, input_shape):
 
 
 
-if __name__ == "__main__":
-    '''
-    test that the model compiles and such
-    '''
-    shape = (200,1280,3)
-
-    model = make_model("xception", shape)
-
-    model.compile(
-        optimizer=Adam(0.0005),
-        loss='categorical_crossentropy')
-    model.summary()
-
-    x = np.random.random((100,)+shape)
-    y = np.random.random((100,6))
-
-    model.fit(
-        x, y, 
-        batch_size=32
-    )

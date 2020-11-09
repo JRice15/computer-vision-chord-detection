@@ -42,7 +42,7 @@ for name in to_process:
     detect_fretboard.main(
         file="raw_data/"+name, 
         outfile="data/"+name, 
-        full=False,
+        full=True,
         nofrets=True,
         show=False
     )

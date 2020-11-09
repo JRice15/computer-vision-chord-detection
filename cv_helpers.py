@@ -20,6 +20,7 @@ def strip_extension(name):
     return name
 
 def readvid(file):
+    print("Reading", file)
     vid = cv.VideoCapture(file)
     vidframes = []
     while vid.isOpened():
