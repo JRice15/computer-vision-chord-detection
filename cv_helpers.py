@@ -71,4 +71,18 @@ def showvid(vid, name="", ms=25):
     cv.destroyWindow(name)
     cv.waitKey(1)
 
-
+def annotate_vid(vid, preds, trues):
+    for i,frame in enumerate(vid):
+        xloc = 5
+        for j in range(6):
+            pred = round(preds[i][j])
+            true = trues[i][j]
+            if round(pred) == true:
+                c = (0,255,0)
+            else:
+                c = (0,0,255)
+            cv.putText(vid[i], str(pred), (xloc, 20), cv.FONT_HERSHEY_PLAIN, fontScale=2, 
+                    color=c, thickness=2)
+            cv.putText(vid[i], str(true), (xloc, 40), cv.FONT_HERSHEY_PLAIN, fontScale=2, 
+                    color=(255,255,255), thickness=2)
+            xloc += 15

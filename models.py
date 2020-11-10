@@ -8,8 +8,8 @@ from keras.layers import (Activation, Add, BatchNormalization, Concatenate,
 from keras.models import Model
 from keras.optimizers import Adam
 
-if not tf.__version__.startswith("2.2"):
-    print("This code was written with TensorFlow 2.2, and may fail on your version:")
+if not tf.__version__.startswith("2.2") or not keras.__version__.startswith("2.4.3"):
+    print("This code was written with TensorFlow 2.2 and Keras 2.4.3, and may fail on your version:")
 print("tf:", tf.__version__)
 print("keras:", keras.__version__)
 
