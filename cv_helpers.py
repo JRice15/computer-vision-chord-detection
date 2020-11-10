@@ -19,15 +19,20 @@ def strip_extension(name):
         name = name[:-reverse_ind-1]
     return name
 
-def readvid(file):
+def readvid(file, maxframes=None):
     print("Reading", file)
-    vid = cv.VideoCapture(file)
+    cap = cv.VideoCapture(file)
     vidframes = []
-    while vid.isOpened():
-        ok, frame = vid.read()
+    count = 0
+    while cap.isOpened():
+        ok, frame = cap.read()
         if not ok:
             break
         vidframes.append(frame)
+        if maxframes is not None:
+            count += 1
+            if count >= maxframes:
+                break
     return vidframes
 
 def writevid(vid, name, flipchannels=True):

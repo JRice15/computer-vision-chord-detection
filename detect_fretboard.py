@@ -636,9 +636,9 @@ def main(**kwargs):
         parser.add_argument("--show",action="store_true",default=False)
         args = parser.parse_args()
 
-    vid = readvid(args.file)
-    if not args.full:
-        vid = vid[:50]
+    maxframes = None if args.full else 50
+    vid = readvid(args.file, maxframes=maxframes)
+
     print(len(vid), "frames,", vid[0].shape)
     print("Expected time:", round(5.4/100 * len(vid) / 60, 2), "minutes")
     start = time.time()

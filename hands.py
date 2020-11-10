@@ -6,26 +6,34 @@ import time
 
 import cv2
 cv = cv2
-import matplotlib.pyplot as plt
 
+import matplotlib.pyplot as plt
+import mediapipe as mp
 import numpy as np
 
 from cv_helpers import *
 
+"""
+mediapipe hand detection
+"""
 
-# mediapipe hand detection
+parser = argparse.ArgumentParser()
+parser.add_argument("--file", required=True)
+args = parser.parse_args()
 
-import mediapipe as mp
 mp_drawing = mp.solutions.drawing_utils
 mp_hands = mp.solutions.hands
 
 
-vid = readvid("fullvids/acoustic_light.mov")
+vid = readvid(args.file, maxframes=100)
 
 # For webcam input:
 hands = mp_hands.Hands(
-    min_detection_confidence=0.3, 
-    min_tracking_confidence=0.3)
+    min_detection_confidence=0.1, 
+    min_tracking_confidence=0.7)
+
+
+shapey, shapex, shapez = vid[0].shape
 
 handvid = []
 for i, image in enumerate(vid):
@@ -42,11 +50,21 @@ for i, image in enumerate(vid):
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
     if results.multi_hand_landmarks:
         for hand_landmarks in results.multi_hand_landmarks:
+            count = 0
+            x = int(np.median([l.x for l in hand_landmarks.landmark]) * shapex)
+            y = int(np.median([l.y for l in hand_landmarks.landmark]) * shapey)
+            for l in hand_landmarks.landmark:
+                count += 1
+                p = (int(l.x * shapex), int(l.y * shapey))
+                image = cv.circle(image, p, 4, (255,0,0), thickness=cv.FILLED, lineType=cv.FILLED)
+            image = cv.circle(image, (x,y), 6, (0,255,0), thickness=cv.FILLED, lineType=cv.FILLED)
             mp_drawing.draw_landmarks(
                 image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
     handvid.append(cv.flip(image, 1))
 
+
 hands.close()
 
-showvid(handvid, ms=35)
+showvid(handvid, ms=60)
 
+mp.framework.formats.landmark_pb2.NormalizedLandmark

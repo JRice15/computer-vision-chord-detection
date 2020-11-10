@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import time
 
 import keras
 import numpy as np
@@ -14,6 +15,7 @@ from sklearn.model_selection import train_test_split
 
 from cv_helpers import *
 from models import make_model
+from save_stats import save_history
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--name",required=True)
@@ -32,6 +34,10 @@ class TrainConfig:
     
     def __str__(self):
         return str(vars(self))
+    
+    def write_to_file(self,filename):
+        with open(filename, "a") as f:
+            f.write("\n" + str(self) + "\n\n")
 
 with open("model_config.json", "r") as f:
     config_dict = json.load(f)
@@ -106,7 +112,7 @@ x = [cv.resize(i, dsize=(0,0), fx=resize_factor, fy=resize_factor, interpolation
 
 img_shape = x[0].shape
 
-showim(x[0], ms=1000)
+# showim(x[0], ms=1000)
 print("img_shape", img_shape)
 
 split_idx = len(x) // 5
@@ -115,54 +121,60 @@ x = x[:-split_idx]
 ytest = y[-split_idx:]
 y = y[:-split_idx]
 
-xtrain, xval, ytrain, yval = train_test_split(x, y, test_size=0.15, random_state=3, shuffle=True)
+xtrain, xval, ytrain, yval = train_test_split(x, y, test_size=0.15, random_state=4, shuffle=True)
 
 print(len(xtrain), "training images,", len(xval), "validation,", len(xtest), "test")
 
 """
 make model
 """
-model = make_model(config.model, img_shape)
 
-model.summary()
-
-def fret_accuracy(y_true, y_pred):
+class FretAccuracy(keras.metrics.Accuracy):
     """
-    average number of correctly predicted frets
+    custom metric that rounds predictions to closest integer
     """
-    y_pred = tf.round(y_pred)
-    corrects = (y_true == y_pred)
-    return K.mean(tf.cast(corrects, tf.int16))
 
-model.compile(
-    loss="mse",
-    optimizer=Adam(config.lr),
-    metrics=[fret_accuracy, "mae"])
-
-
-"""
-train model
-"""
-
-def lr_sched(epoch, lr=None):
-    if lr is None:
-        if epoch % config.lr_sched_freq == 0:
-            print("Decreasing learning rate to", lr)
-        exp = epoch // config.lr_sched_freq
-        lr = config.lr * (config.lr_sched_factor ** exp)
-    elif epoch == 0:
-        pass
-    elif epoch % config.lr_sched_freq == 0:
-        lr = lr * config.lr_sched_factor
-        print("Decreasing learning rate to", lr)
-    return lr
+    def update_state(self, y_true, y_pred):
+        y_pred = tf.round(y_pred)
+        return super().update_state(y_true, y_pred)
 
 
 if args.load:
-    print("Loading weights...")
-    model.load_weights("models/"+args.name+".hdf5")
+    objs = {"FretAccuracy": FretAccuracy}
+
+    print("Loading model...")
+    model = keras.models.load_model("models/"+args.name+".hdf5", custom_objects=objs)
+
+    model.summary()
 
 else:
+    model = make_model(config.model, img_shape)
+
+    model.summary()
+
+    model.compile(
+        loss="mse",
+        optimizer=Adam(config.lr),
+        metrics=[FretAccuracy(), "mae"])
+
+
+    """
+    train model
+    """
+
+    def lr_sched(epoch, lr=None):
+        if lr is None:
+            if epoch % config.lr_sched_freq == 0:
+                print("Decreasing learning rate to", lr)
+            exp = epoch // config.lr_sched_freq
+            lr = config.lr * (config.lr_sched_factor ** exp)
+        elif epoch == 0:
+            pass
+        elif epoch % config.lr_sched_freq == 0:
+            lr = lr * config.lr_sched_factor
+            print("Decreasing learning rate to", lr)
+        return lr
+
     os.makedirs("models/", exist_ok=True)
     callbacks = [
         History(),
@@ -170,6 +182,7 @@ else:
         ModelCheckpoint("models/"+args.name+".hdf5", save_best_only=True, verbose=1, period=1)
     ]
 
+    start = time.time()
     try:
         H = model.fit(
             np.array(xtrain),
@@ -183,6 +196,10 @@ else:
     except KeyboardInterrupt:
         print("\nManual early stopping")
         H = callbacks[0]
+    end = time.time()
+    
+    step = max(1, len(H.history['loss']) // 6)
+    save_history(H, args.name, end-start, config, marker_step=step)
 
 
 """
@@ -192,6 +209,20 @@ testing
 print("Evaluating on test set")
 model.evaluate(np.array(xtest), np.array(ytest))
 
+# on training set
+num = 10
+train_short = np.array(xtrain[:num])
+
+trainpreds = model.predict(train_short)
+
+vid = [cv.resize(i, dsize=(0,0), fx=1/resize_factor, fy=1/resize_factor, \
+            interpolation=cv.INTER_LINEAR) for i in train_short]
+
+annotate_vid(vid, trainpreds, ytrain[:num])
+
+showvid(vid, name="train ims", ms=500)
+
+# on test set
 testpreds = model.predict(np.array(xtest))
 
 vid = [cv.resize(i, dsize=(0,0), fx=1/resize_factor, fy=1/resize_factor, \
@@ -199,4 +230,4 @@ vid = [cv.resize(i, dsize=(0,0), fx=1/resize_factor, fy=1/resize_factor, \
 
 annotate_vid(vid, testpreds, ytest)
 
-showvid(vid, ms=35)
+showvid(vid, name="test set", ms=35)
