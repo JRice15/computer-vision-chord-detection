@@ -4,7 +4,7 @@ import tensorflow as tf
 from keras import backend as K
 from keras.layers import (Activation, Add, BatchNormalization, Concatenate,
                           Conv2D, Dense, Flatten, GlobalAveragePooling2D,
-                          Input, MaxPooling2D, ReLU, Multiply, Lambda, Dropout)
+                          Input, MaxPooling2D, ReLU, Multiply, Lambda, Dropout, Reshape)
 from keras.models import Model
 from keras.optimizers import Adam
 
@@ -13,7 +13,7 @@ if not tf.__version__.startswith("2.2") or not keras.__version__.startswith("2.4
 print("tf:", tf.__version__)
 print("keras:", keras.__version__)
 
-MAX_FRET = 12
+MAX_FRET = 6
 
 def xception(input_shape):
     """
@@ -23,9 +23,15 @@ def xception(input_shape):
     base = keras.applications.Xception(include_top=False, weights=None, 
                 input_shape=input_shape, pooling='avg')
     x = base(inpt)
-    x = Dense(256, activation="relu")(x)
+
+    x = Dense(256)(x)
+    x = ReLU()(x)
     x = Dropout(0.4)(x)
-    x = Dense(32, activation="relu")(x)
+
+    x = Dense(32)(x)
+    x = ReLU()(x)
+    x = Dropout(0.4)(x)
+
     x = Dense(6)(x)
     # sigmoid limits to between 0 and 1. Then we multiply by the constant to
     # allow a range from 0 to MAX_FRET to be predicted for each string
@@ -39,12 +45,29 @@ def mobilenetv2(input_shape):
     keras mobilenetv2
     """
     inpt = Input(input_shape)
-    base = keras.applications.MobileNetV2(include_top=False, weights=None, 
-                input_shape=input_shape, pooling='avg')
+    base = keras.applications.MobileNetV2(include_top=False, weights=None,
+                input_shape=input_shape, alpha=1.0)
+    # x = keras.applications.mobilenet_v2.preprocess_input(inpt)
     x = base(inpt)
-    x = Dense(256, activation="relu")(x)
-    x = Dropout(0.4)(x)
-    x = Dense(32, activation="relu")(x)
+    # x = GlobalAveragePooling2D()(x)
+
+    x = Dense(128)(x)
+    x = ReLU()(x)
+    x = Dropout(0.5)(x)
+
+    x = Dense(8)(x)
+    x = ReLU()(x)
+    x = Dropout(0.5)(x)
+
+    x = Flatten()(x)
+    x = Dense(64)(x)
+    x = ReLU()(x)
+    x = Dropout(0.5)(x)
+
+    x = Dense(32)(x)
+    x = ReLU()(x)
+    x = Dropout(0.5)(x)
+
     x = Dense(6)(x)
     # sigmoid limits to between 0 and 1. Then we multiply by the constant to
     # allow a range from 0 to MAX_FRET to be predicted for each string

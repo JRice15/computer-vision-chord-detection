@@ -43,7 +43,8 @@ def writevid(vid, name, flipchannels=True):
     name = strip_extension(name)+".mp4"
     print("writing vid", name, "...")
     vid = np.array(vid)
-    vid = vid[...,::-1]
+    if flipchannels:
+        vid = vid[...,::-1]
     skvideo.io.vwrite(name, vid, 
         outputdict={"-pix_fmt": "yuv420p"},
         backend='ffmpeg')
