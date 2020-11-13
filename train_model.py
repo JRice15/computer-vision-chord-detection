@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 from keras import backend as K
 from keras.callbacks import (History, LearningRateScheduler, ModelCheckpoint,
-                             ReduceLROnPlateau)
+                             ReduceLROnPlateau, EarlyStopping)
 from keras.models import Model
 from keras.optimizers import Adam
 from sklearn.model_selection import train_test_split
@@ -48,18 +48,49 @@ config = TrainConfig(**config_dict)
 load data
 """
 
+xnames = []
+ynames = []
+
+# mapping name to extension
+found_exts = {}
+
+# find which paths to load, by matching npy files with video files
+for filename in os.listdir("data"):
+    if not filename.startswith("."):
+        _, name, ext = split_path(filename)
+        if ext == ".npy":
+            if name in found_exts:
+                if found_exts[name] != ".npy":
+                    xnames.append(name + found_exts[name])
+                    ynames.append(filename)
+                else:
+                    raise ValueError("Multiple .npy with name '" + filename + "'")
+            else:
+                found_exts[name] = ext
+        elif ext in (".mov", ".mp4"):
+            if name in found_exts:
+                if found_exts[name] == ".npy":
+                    xnames.append(filename)
+                    ynames.append(name + found_exts[name])
+                else:
+                    raise ValueError("Multiple vid with name '" + filename + "'")
+            else:
+                found_exts[name] = ext
+        else:
+            raise ValueError("Unknown filetype in 'data' dir: '" + filename + "'")
+    
+
+
+# y is list of arrays, each array is a chord map [ [frame index, chord str], ... ]
 yraw = []
+# x is a list of arrays, each array is a video, with shape (numframes, x, y, 3)
 xraw = []
 
-for name in os.listdir("data"):
-    if not name.startswith("."):
-        path = "data/"+name
-        if split_path(name)[-1] == ".npy":
-            yraw.append(np.load(path))
-        else:
-            vid = readvid(path)
-            print(len(vid), "frames")
-            xraw.append(vid)
+for i in range(len(xnames)):
+    yraw.append(np.load("data/"+ynames[i]))
+    vid = readvid("data/"+xnames[i])
+    print(len(vid), "frames")
+    xraw.append(vid)
 
 if len(xraw) < 1 or len(yraw) < 1:
     print("No data in the 'data' directory")
@@ -71,22 +102,36 @@ ys = []
 def str_to_chord(s):
     return np.array(list(s), dtype=int)
 
+# for each video loaded
 for i in range(len(yraw)):
     start = int(yraw[i][0][0]) # first chord, its index
-    xs.append(xraw[i][start:])
+    thisx = []
     thisy = []
     # frame index, relative to video
     vid_ind = start
     # index of next upcoming chord in y[i]
-    y_ind = 0
+    y_ind_next = 0
+    y_ind_curr = -1
     while vid_ind < len(xraw[i]):
-        # if the frameindex is 
-        if y_ind < len(yraw[i]) and int(yraw[i][y_ind][0]) == vid_ind:
-            chord = str_to_chord(yraw[i][y_ind][1])
-            y_ind += 1
-        thisy.append(chord)
+        # if the frameindex is at the next chord in y, move up the pointers
+        if y_ind_next < len(yraw[i]) and int(yraw[i][y_ind_next][0]) == vid_ind:
+            chord = str_to_chord(yraw[i][y_ind_next][1])
+            y_ind_next += 1
+            y_ind_curr += 1
+            vid_ind_curr = int(yraw[i][y_ind_curr][0])
+        # get where we are in this chord
+        if y_ind_next < len(yraw[i]):
+            chord_len = int(yraw[i][y_ind_next][0]) - int(yraw[i][y_ind_curr][0])
+        else:
+            chord_len = len(xraw[i]) - int(yraw[i][y_ind_curr][0])
+        # only keep frames solidly in the middle of a chord (no transitions)
+        pos_in_chord = vid_ind - vid_ind_curr
+        if not ((pos_in_chord / chord_len < 0.2) or (pos_in_chord / chord_len > 0.7)):
+            thisy.append(chord)
+            thisx.append(xraw[i][vid_ind])
         vid_ind += 1
     ys.append(thisy)
+    xs.append(thisx)
 
 # make sure everythig is the same size
 assert len(xs) == len(ys)
@@ -99,7 +144,7 @@ for i in range(len(xs)):
 """
 preprocessing
 """
-# TODO when loading multiple vids, make all the same shape. and downsample?
+# TODO when loading multiple vids, make all the same shape
 
 x = []
 y = []
@@ -107,12 +152,14 @@ for i in range(len(xs)):
     x += xs[i]
     y += ys[i]
 
-resize_factor = 0.4
+# showvid(x[-300:], name="x", ms=100)
+
+resize_factor = 0.5
 x = [cv.resize(i, dsize=(0,0), fx=resize_factor, fy=resize_factor, interpolation=cv.INTER_AREA) for i in x]
 
 img_shape = x[0].shape
 
-# showim(x[0], ms=1000)
+showim(x[0], ms=1000)
 print("img_shape", img_shape)
 
 split_idx = len(x) // 5
@@ -139,15 +186,7 @@ class FretAccuracy(keras.metrics.Accuracy):
         return super().update_state(y_true, y_pred)
 
 
-if args.load:
-    objs = {"FretAccuracy": FretAccuracy}
-
-    print("Loading model...")
-    model = keras.models.load_model("models/"+args.name+".hdf5", custom_objects=objs)
-
-    model.summary()
-
-else:
+if not args.load:
     model = make_model(config.model, img_shape)
 
     model.summary()
@@ -179,7 +218,8 @@ else:
     callbacks = [
         History(),
         LearningRateScheduler(lr_sched),
-        ModelCheckpoint("models/"+args.name+".hdf5", save_best_only=True, verbose=1, period=1)
+        ModelCheckpoint("models/"+args.name+".hdf5", save_best_only=True, verbose=1, period=1),
+        EarlyStopping(monitor='val_loss', verbose=1, patience=int(config.lr_sched_freq * 1.4))
     ]
 
     start = time.time()
@@ -202,6 +242,15 @@ else:
     save_history(H, args.name, end-start, config, marker_step=step)
 
 
+objs = {"FretAccuracy": FretAccuracy}
+
+print("Loading model...")
+model = keras.models.load_model("models/"+args.name+".hdf5", custom_objects=objs)
+
+if args.load:
+    model.summary()
+
+
 """
 testing
 """
@@ -219,8 +268,9 @@ vid = [cv.resize(i, dsize=(0,0), fx=1/resize_factor, fy=1/resize_factor, \
             interpolation=cv.INTER_LINEAR) for i in train_short]
 
 annotate_vid(vid, trainpreds, ytrain[:num])
-
 showvid(vid, name="train ims", ms=500)
+writevid(vid, "stats/"+args.name+"/results_visualization_trainset")
+
 
 # on test set
 testpreds = model.predict(np.array(xtest))
@@ -229,5 +279,5 @@ vid = [cv.resize(i, dsize=(0,0), fx=1/resize_factor, fy=1/resize_factor, \
             interpolation=cv.INTER_LINEAR) for i in xtest]
 
 annotate_vid(vid, testpreds, ytest)
-
 showvid(vid, name="test set", ms=35)
+writevid(vid, "stats/"+args.name+"/results_visualization_testset")

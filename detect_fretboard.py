@@ -15,19 +15,35 @@ from cv_helpers import *
 print("Your openCV version:", cv.__version__)
 print("It might not work if it isnt 4.5.x")
 
-def edge_process(vid, edge_threshold=70, blur=True, show_result=False):
+def blur(vid):
+    blurred = [cv.GaussianBlur(i, (5,5), 2) for i in vid]
+    return blurred
+
+def bg_subtract(vid, threshold=50):
+    # bgsub = cv.createBackgroundSubtractorKNN(detectShadows=False)
+    # masks = [bgsub.apply(i) for i in vid]
+    vid = np.array(vid) / 255
+    bg = np.mean(vid, 0)
+    # print(bg, bg.shape)
+    mask = np.any(np.any(np.logical_or(vid > bg+threshold/255, vid < bg-threshold/255), axis=-1), axis=0)
+    mask = np.float32(mask)
+    kern = cv.getStructuringElement(cv.MORPH_CROSS, (5,5))
+    mask = cv.dilate(mask, kern)
+    showim(bg, ms=3000)
+    showim(mask, ms=3000)
+    exit()
+
+def edge_process(vid, edge_threshold=70, show_result=False):
     """
     grayscale and blur, and find edges
     """
     print("Finding edges")
     gray = [cv.cvtColor(i, cv.COLOR_BGR2GRAY) for i in vid]
-    if blur:
-        blurred = [cv.GaussianBlur(i, (5,5), 2) for i in gray]
 
     """
     edge detection. the second number is the main threshold (lower => more edges, more noise)
     """
-    edges = [cv.Canny(i, 10, edge_threshold) for i in blurred]
+    edges = [cv.Canny(i, 10, edge_threshold) for i in gray]
     # edges = [cv.dilate(i, np.ones((3,3),np.uint8),iterations=1) for i in edges]
     # edges = [cv.erode(i, np.ones((5,5),np.uint8),iterations=1) for i in edges]
 
@@ -164,10 +180,15 @@ def find_contours(linesvid, vid, show_result=False):
         rect = cv2.minAreaRect(cnt)
         box = cv.boxPoints(rect)
         box = np.int0(box)
-        boxes.append(box)
         if show_result:
             im = boxes_vid[i]
             cv2.drawContours(im,[box],0,(0,0,255),2)
+        box = order_points(box)
+        boxes.append(box)
+        if show_result:
+            cs = [(255,0,0), (0,255,0), (0,0,255), (255,255,255)]
+            for i in range(4):
+                cv.circle(im, tuple(box[i]), 5, cs[i], -1, cv.FILLED)
 
     if show_result:
         showvid(boxes_vid, "bounding boxes", ms=100)
@@ -652,13 +673,15 @@ def main(**kwargs):
     for i in range(0, len(vid), 500):
         print("\nFrames", i, "through", i+500)
         batch = vid[i:i+500]
-        edges = edge_process(batch, show_result=False and args.show)
+        blurred = blur(batch)
+        # bg = bg_subtract(blurred)
+        edges = edge_process(batch, show_result=True and args.show)
         timer()
-        linesvid, lines = find_lines(edges, batch, show_result=False and args.show)
+        linesvid, lines = find_lines(edges, batch, show_result=True and args.show)
         timer()
-        boxes = find_contours(linesvid, batch, show_result=False and args.show)
+        boxes = find_contours(linesvid, batch, show_result=True and args.show)
         timer()
-        boxes = smooth_bounding_boxes(boxes, batch, show_result=False and args.show)
+        boxes = smooth_bounding_boxes(boxes, batch, show_result=True and args.show)
         timer()
         fretboard_batch = rot_and_crop(boxes, lines, batch, show_result=True and args.show)
         timer()
@@ -672,15 +695,18 @@ def main(**kwargs):
     timer()
 
     if not args.nofrets:
-        fretboard_edges = edge_process(fretboard_vid, edge_threshold=50,
-                            show_result=False and args.show)
-        timer()
-        line_positions = find_vert_lines(fretboard_edges, fretboard_vid, 
-                            prob_lines=False, show_result=False and args.show)
-        timer()
-        matches = match_frets(line_positions, fretboard_vid, 
-                    show_result=True and args.show)
-        timer()
+        for i in range(len(vid), 500):
+            fretboard_batch = fretboard_vid[i:i+500]
+            blurred = blur(fretboard_batch)
+            fretboard_edges = edge_process(blurred, edge_threshold=50,
+                                show_result=True and args.show)
+            timer()
+            line_positions = find_vert_lines(fretboard_edges, fretboard_batch, 
+                                prob_lines=True, show_result=False and args.show)
+            timer()
+            matches = match_frets(line_positions, fretboard_batch, 
+                        show_result=True and args.show)
+            timer()
 
     print(round((time.time() - start) / 60, 2), "minutes elapsed")
     timer(clear=True)

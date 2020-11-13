@@ -3,6 +3,7 @@ cv = cv2
 import skvideo.io
 import numpy as np
 import os
+import scipy
 
 """
 basic helper functions
@@ -92,3 +93,37 @@ def annotate_vid(vid, preds, trues):
             cv.putText(vid[i], str(true), (xloc, 40), cv.FONT_HERSHEY_PLAIN, fontScale=2, 
                     color=(255,255,255), thickness=2)
             xloc += 15
+
+def euc_dist(p1, p2s):
+    return np.sqrt(p1 ** 2 + p2s ** 2)
+
+def order_points(pts):
+    """
+    order contour points, from 
+    https://github.com/jrosebr1/imutils/blob/224d591b4c3a9efc855e2e8eabc9c55199c696c3/imutils/perspective.py
+    """
+    # sort the points based on their x-coordinates
+    xSorted = pts[np.argsort(pts[:, 0]), :]
+
+    # grab the left-most and right-most points from the sorted
+    # x-roodinate points
+    leftMost = xSorted[:2, :]
+    rightMost = xSorted[2:, :]
+
+    # now, sort the left-most coordinates according to their
+    # y-coordinates so we can grab the top-left and bottom-left
+    # points, respectively
+    leftMost = leftMost[np.argsort(leftMost[:, 1]), :]
+    (tl, bl) = leftMost
+
+    # now that we have the top-left coordinate, use it as an
+    # anchor to calculate the Euclidean distance between the
+    # top-left and right-most points; by the Pythagorean
+    # theorem, the point with the largest distance will be
+    # our bottom-right point
+    D = scipy.spatial.distance.cdist(tl[np.newaxis], rightMost, "euclidean")[0]
+    (br, tr) = rightMost[np.argsort(D)[::-1], :]
+
+    # return the coordinates in top-left, top-right,
+    # bottom-right, and bottom-left order
+    return np.array([tl, tr, br, bl], dtype=np.int16)
