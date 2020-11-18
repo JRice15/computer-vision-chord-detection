@@ -20,6 +20,7 @@ from save_stats import save_history
 parser = argparse.ArgumentParser()
 parser.add_argument("--name",required=True)
 parser.add_argument("--load",action="store_true")
+parser.add_argument("--nodisplay",action="store_true")
 args = parser.parse_args()
 
 class TrainConfig:
@@ -152,7 +153,8 @@ x = []
 y = []
 for i in range(len(xs)):
     thisx = [cv.resize(im, dsize=(IM_WIDTH,IM_HEIGHT), interpolation=cv.INTER_AREA) for im in xs[i]]
-    showim(thisx[0], ms=1000)
+    if not args.nodisplay:
+        showim(thisx[0], ms=1000)
     x += thisx
     y += ys[i]
 
@@ -264,7 +266,8 @@ vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
             interpolation=cv.INTER_LINEAR) for i in train_short]
 
 annotate_vid(vid, trainpreds, ytrain[:num])
-showvid(vid, name="train ims", ms=500)
+if not args.nodisplay:
+    showvid(vid, name="train ims", ms=500)
 writevid(vid, "stats/"+args.name+"/results_visualization_trainset")
 
 
@@ -275,5 +278,6 @@ vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
             interpolation=cv.INTER_LINEAR) for i in xtest]
 
 annotate_vid(vid, testpreds, ytest)
-showvid(vid, name="test set", ms=35)
+if not args.nodisplay:
+    showvid(vid, name="test set", ms=35)
 writevid(vid, "stats/"+args.name+"/results_visualization_testset")
