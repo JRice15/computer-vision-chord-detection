@@ -144,31 +144,26 @@ for i in range(len(xs)):
 """
 preprocessing
 """
-# TODO when loading multiple vids, make all the same shape
+IM_HEIGHT = 108
+IM_WIDTH = 540
+print("height/width ratio:", IM_HEIGHT/IM_WIDTH)
 
 x = []
 y = []
 for i in range(len(xs)):
-    x += xs[i]
+    thisx = [cv.resize(im, dsize=(IM_WIDTH,IM_HEIGHT), interpolation=cv.INTER_AREA) for im in xs[i]]
+    showim(thisx[0], ms=1000)
+    x += thisx
     y += ys[i]
 
 # showvid(x[-300:], name="x", ms=100)
 
-resize_factor = 0.5
-x = [cv.resize(i, dsize=(0,0), fx=resize_factor, fy=resize_factor, interpolation=cv.INTER_AREA) for i in x]
-
 img_shape = x[0].shape
-
-showim(x[0], ms=1000)
 print("img_shape", img_shape)
 
-split_idx = len(x) // 5
-xtest = x[-split_idx:]
-x = x[:-split_idx]
-ytest = y[-split_idx:]
-y = y[:-split_idx]
 
-xtrain, xval, ytrain, yval = train_test_split(x, y, test_size=0.15, random_state=4, shuffle=True)
+x, xtest, y, ytest = train_test_split(x, y, test_size=0.15, random_state=3, shuffle=True)
+xtrain, xval, ytrain, yval = train_test_split(x, y, test_size=0.10, random_state=4, shuffle=True)
 
 print(len(xtrain), "training images,", len(xval), "validation,", len(xtest), "test")
 
@@ -264,7 +259,8 @@ train_short = np.array(xtrain[:num])
 
 trainpreds = model.predict(train_short)
 
-vid = [cv.resize(i, dsize=(0,0), fx=1/resize_factor, fy=1/resize_factor, \
+scaleup = 2.0
+vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
             interpolation=cv.INTER_LINEAR) for i in train_short]
 
 annotate_vid(vid, trainpreds, ytrain[:num])
@@ -275,7 +271,7 @@ writevid(vid, "stats/"+args.name+"/results_visualization_trainset")
 # on test set
 testpreds = model.predict(np.array(xtest))
 
-vid = [cv.resize(i, dsize=(0,0), fx=1/resize_factor, fy=1/resize_factor, \
+vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
             interpolation=cv.INTER_LINEAR) for i in xtest]
 
 annotate_vid(vid, testpreds, ytest)

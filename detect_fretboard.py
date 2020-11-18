@@ -410,7 +410,7 @@ def normalize_shape(rotated_vid, rotated_bounds, handspos, target_ratio, show_re
                 good_xs = [x for (x,y) in pts if abs(y - mid_ys[i]) < (hspan * 1.2)]
                 if good_xs:
                     # 0.1 factor is to focus toward the nut side of the hand, if possible
-                    this_handx = max(good_xs) + (0.1 * width)
+                    this_handx = max(good_xs) + int(0.1 * width)
                     # clip to min/max bounds, then make it our new most recent x position
                     curr_handx = max(min_x, min(max_x, this_handx))
             hand_xs.append(curr_handx)
@@ -750,11 +750,10 @@ def main(**kwargs):
         parser.add_argument("--show",action="store_true",default=False)
         args = parser.parse_args()
 
-    maxframes = None if args.full else 1000
+    maxframes = None if args.full else 30
     vid = readvid(args.file, maxframes=maxframes)
 
     print(len(vid), "frames,", vid[0].shape)
-    print("Expected time:", round(5.4/100 * len(vid) / 60, 2), "minutes")
     start = time.time()
 
     if False and args.show:
@@ -772,7 +771,7 @@ def main(**kwargs):
         # bg = bg_subtract(blurred)
         edges = edge_process(blurred, show_result=False and args.show)
         timer()
-        linesvid, lines = find_lines(edges, batch, show_result=False and args.show)
+        linesvid, lines = find_lines(edges, batch, show_result=True and args.show)
         timer()
         boxes = find_contours(linesvid, batch, show_result=False and args.show)
         timer()

@@ -25,8 +25,9 @@ def xception(input_shape):
     """
     inpt = Input(input_shape)
     base = keras.applications.Xception(include_top=False, weights=None, 
-                input_shape=input_shape, pooling='avg')
+                input_shape=input_shape)
     x = base(inpt)
+    x = GlobalAveragePooling2D()(x)
 
     x = Dense(256)(x)
     x = ReLU()(x)
