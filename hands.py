@@ -26,7 +26,7 @@ def detect_hands(vid, show_result=True):
 
     hands = mp_hands.Hands(
         min_detection_confidence=0.1, 
-        min_tracking_confidence=0.7)
+        min_tracking_confidence=0.1)
 
     shapey, shapex, shapez = vid[0].shape
 

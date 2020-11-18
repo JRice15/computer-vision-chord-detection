@@ -396,7 +396,7 @@ def normalize_shape(rotated_vid, rotated_bounds, handspos, target_ratio, show_re
     
     height, width, z = fretboard_vid[0].shape
 
-    if (height / width) < 0.95 * target_ratio:
+    if (height / width) < 0.98 * target_ratio:
         print("Cropping width")
         # too long and skinny, crop in x dimension
         target_width_span = int((height / target_ratio) // 2)
@@ -409,7 +409,10 @@ def normalize_shape(rotated_vid, rotated_bounds, handspos, target_ratio, show_re
                 # for each possible hand position detected, keep the rightmost one that is within the bounds of the fretboard
                 good_xs = [x for (x,y) in pts if abs(y - mid_ys[i]) < (hspan * 1.2)]
                 if good_xs:
-                    curr_handx = max(min_x, min(max_x, max(good_xs)))
+                    # 0.1 factor is to focus toward the nut side of the hand, if possible
+                    this_handx = max(good_xs) + (0.1 * width)
+                    # clip to min/max bounds, then make it our new most recent x position
+                    curr_handx = max(min_x, min(max_x, this_handx))
             hand_xs.append(curr_handx)
         
         # replace any initial Nones recursively
@@ -422,7 +425,7 @@ def normalize_shape(rotated_vid, rotated_bounds, handspos, target_ratio, show_re
         fretboard_vid = [ 
             frame[:, hand_xs[i]-target_width_span:hand_xs[i]+target_width_span] for i,frame in enumerate(fretboard_vid)
         ]
-    elif (height / width) > 1.05 * target_ratio:
+    elif (height / width) > 1.02 * target_ratio:
         # pad in y direction
         print("Padding height")
         target_height = int(width * 0.3)
@@ -747,7 +750,7 @@ def main(**kwargs):
         parser.add_argument("--show",action="store_true",default=False)
         args = parser.parse_args()
 
-    maxframes = None if args.full else 50
+    maxframes = None if args.full else 1000
     vid = readvid(args.file, maxframes=maxframes)
 
     print(len(vid), "frames,", vid[0].shape)
@@ -781,7 +784,7 @@ def main(**kwargs):
         full_rotated += rotated_vid
         full_bounds += fretboard_bounds
         timer()
-        handbounds = detect_hands(rotated_vid, show_result=False and args.show)
+        handbounds = detect_hands(rotated_vid, show_result=True and args.show)
         full_hands += handbounds
         timer()
 
