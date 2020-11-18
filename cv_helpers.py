@@ -56,7 +56,7 @@ def writevid(vid, name, flipchannels=True):
     #     writer.write(frame)
     # writer.release()
 
-def showim(img, name="", ms=1000):
+def showim(img, name="window", ms=1000):
     """
     show image with a good wait time
     """
@@ -66,7 +66,7 @@ def showim(img, name="", ms=1000):
     cv.destroyWindow(name)
     cv.waitKey(1)
 
-def showvid(vid, name="", ms=25):
+def showvid(vid, name="window", ms=25):
     """
     show vid, press a key to cancel
     """
@@ -75,8 +75,11 @@ def showvid(vid, name="", ms=25):
         cv.moveWindow(name, 0, 0)
         if cv.waitKey(ms) != -1:
             break
-    cv.destroyWindow(name)
-    cv.waitKey(1)
+    try:
+        cv.destroyWindow(name)
+        cv.waitKey(1)
+    except:
+        pass
 
 def annotate_vid(vid, preds, trues):
     for i,frame in enumerate(vid):

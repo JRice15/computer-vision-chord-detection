@@ -206,7 +206,7 @@ def my_mobilenet(input_shape, alpha=0.5, weights='imagenet'):
         axis=channel_axis, epsilon=1e-3, momentum=0.999, name='Conv_1_bn')(x)
     x = layers.ReLU(6., name='relu_1')(x)
 
-    x = layers.Conv2D(16, kernel_size=(1,13), use_bias=False, name='Conv_2')(x)
+    x = layers.Conv2D(16, kernel_size=(3,3), use_bias=False, name='Conv_2')(x)
     x = layers.BatchNormalization(
         axis=channel_axis, epsilon=1e-3, momentum=0.999, name='Conv_2_bn')(x)
     x = layers.ReLU(6., name='out_relu')(x)
@@ -214,7 +214,7 @@ def my_mobilenet(input_shape, alpha=0.5, weights='imagenet'):
     x = Flatten()(x)
     x = Dropout(0.5)(x)
 
-    x = Dense(32)(x)
+    x = Dense(64)(x)
     x = ReLU(MAX_FRET)(x)
     x = Dropout(0.5)(x)
 

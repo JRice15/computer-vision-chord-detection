@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from cv_helpers import *
+from hands import detect_hands
 
 print("Your openCV version:", cv.__version__)
 print("It might not work if it isnt 4.5.x")
@@ -179,7 +180,7 @@ def find_contours(linesvid, vid, show_result=False):
         # find its (potentially nonvertical) bounding rect
         rect = cv2.minAreaRect(cnt)
         box = cv.boxPoints(rect)
-        box = np.int0(box)
+        box = np.int16(box)
         if show_result:
             im = boxes_vid[i]
             cv2.drawContours(im,[box],0,(0,0,255),2)
@@ -231,17 +232,17 @@ def smooth_bounding_boxes(boxes, orig_vid, show_result=True):
             selection = np.concatenate((selection, boxes[-(span - i2):]), axis=0)
 
         # remove highest and lowest n
-        if num_outliers > 0:
-            newboxes = []
-            for box in np.array(selection).T:
-                new = []
-                for row in box:
-                    for _ in range(num_outliers):
-                        row = np.delete(row, row.argmin())
-                        row = np.delete(row, row.argmax())
-                    new.append(row)
-                newboxes.append(new)
-            selection = np.array(newboxes).T
+        # if num_outliers > 0:
+        #     newboxes = []
+        #     for box in np.array(selection).T:
+        #         new = []
+        #         for row in box:
+        #             for _ in range(num_outliers):
+        #                 row = np.delete(row, row.argmin())
+        #                 row = np.delete(row, row.argmax())
+        #             new.append(row)
+        #         newboxes.append(new)
+        #     selection = np.array(newboxes).T
             
         # average the rest
         newbox = np.mean(selection, axis=0)
@@ -256,7 +257,37 @@ def smooth_bounding_boxes(boxes, orig_vid, show_result=True):
     return smoothed_boxes
 
 
-def rot_and_crop(boxes, lines, vid, show_result=False):
+def smooth_lines_angles(lines, show_result=False):
+    """
+    smooth line angles
+    """
+    print("smoothing lines")
+
+    # span is number of frames on each side to average the bounding boxes of
+    span = 3
+    smooth_angles = []
+
+    for i, line in enumerate(lines):
+        # get a selection of 2*span+1 consecutive boxes, and repeat some when at the edges of the video
+        top = i + span + 1
+        bottom = i-span
+        if bottom < 0:
+            bottom = 0
+        selection = lines[bottom:top]
+        if i < span:
+            selection += lines[:(span-i)]
+        elif i >= (len(lines) - span):
+            i2 = len(lines) - i - 1
+            selection += lines[-(span - i2):]
+
+        selection_angles = [np.mean([l[0][1] for l in frame]) for frame in selection]
+        selection_angles = np.mean(selection_angles)
+        smooth_angles.append(selection_angles)
+    
+    return smooth_angles
+
+
+def rotate_frames(boxes, angles, vid, show_result=False):
     """
     rotate the frames so that the fretboard is horizontal, and crop to the same size
     args:
@@ -265,6 +296,7 @@ def rot_and_crop(boxes, lines, vid, show_result=False):
         vid: orig vid to copy and modify
     returns:
         rotated and cropped vid
+        (top, bottom) y positions to crop to
     """
     print("Rotating and cropping to fretboard")
 
@@ -284,12 +316,13 @@ def rot_and_crop(boxes, lines, vid, show_result=False):
         x0, y0 = p0
         x2 = ((x1 - x0) * np.cos(a)) - ((y1 - y0) * np.sin(a)) + x0
         y2 = ((x1 - x0) * np.sin(a)) + ((y1 - y0) * np.cos(a)) + y0
-        return np.int0(x2), np.int0(y2)
+        return np.int16(x2), np.int16(y2)
 
     center = (vid[0].shape[1]//2, vid[0].shape[0]//2)
-    fretboard_vid = []
+    rotated_vid = []
+    rot_bounds = []
     for i, frame in enumerate(vid):
-        radians = np.mean([l[0][1] for l in lines[i]]) - (np.pi * 1/2)
+        radians = angles[i] - (np.pi * 1/2)
         degrees = np.degrees(radians)
         # mask = np.zeros(frame.shape)
         # box = np.vstack(rotate_points(boxes[i], center, -radians)).T
@@ -299,6 +332,7 @@ def rot_and_crop(boxes, lines, vid, show_result=False):
 
         # showim(mask)
         rot_frame = rotate_image(frame, degrees)
+        rotated_vid.append(rot_frame)
         # rot_mask = rotate_image(mask, degrees)
         # showim(rot_frame)
 
@@ -308,42 +342,98 @@ def rot_and_crop(boxes, lines, vid, show_result=False):
         #     continue
         xs, ys = rotate_points(boxes[i], center, -radians)
         topy = max(0, np.min(ys))
-        topx = max(0, np.min(xs))
+        # topx = max(0, np.min(xs))
         bottomy = np.max(ys)
-        bottomx = np.max(xs)
-        rot_frame = rot_frame[topy:bottomy+1, topx:bottomx+1]
+        # bottomx = np.max(xs)
+        bounds = (topy, bottomy+1)
+        rot_bounds.append(bounds)
+        # rot_frame = rot_frame[topy:bottomy+1, topx:bottomx+1]
         # TODO extend the bottom, since it tends to miss the smaller strings more often?
-        fretboard_vid.append(rot_frame)
 
     if show_result:
-        showvid(fretboard_vid, name="fretboard", ms=200)
+        showvid(rotated_vid, name="fretboard", ms=200)
 
-    return fretboard_vid
+    return rotated_vid, rot_bounds
 
 
-def normalize_shape(fretboard_vid):
+def normalize_shape(rotated_vid, rotated_bounds, handspos, target_ratio, show_result=False):
     """
-    make all frames the same shape by padding zeroes to fit the max frame size
+    make all frames the same shape
+    args:
+        rotated vid
+        rotated bounds: rotated bounding boxes
+        handspos: list of [[x1,y1],...] positions of hands, for each frame (or None when missing)
+        target ratio: ratio of height/width
     """
     print("Normalizing frames to consistent shape")
 
-    def pad_to_target(frame, target_x, target_y):
+    def pad_to_target(frame, target_y, target_x=None):
         top = target_y - frame.shape[0]
-        left = target_x - frame.shape[1]
         bottom = (top + 1) // 2
-        right = (left + 1) // 2
         top = top // 2
-        left = left // 2
+        if target_x is None:
+            left = 0
+            right = 0
+        else:
+            left = target_x - frame.shape[1]
+            right = (left + 1) // 2
+            left = left // 2
         return cv.copyMakeBorder(frame, top, bottom, left, right, cv.BORDER_CONSTANT, 0)
 
-    # find target shape (has to be divisible by 2 to write out)
-    max_y = max([i.shape[0] for i in fretboard_vid])
-    if max_y % 2 == 1:
-        max_y += 1
-    max_x = max([i.shape[1] for i in fretboard_vid])
-    if max_x % 2 == 1:
-        max_x += 1
-    fretboard_vid = [pad_to_target(i, max_x, max_y) for i in fretboard_vid]
+    rotated_bounds = np.array(rotated_bounds)
+    topys = rotated_bounds[...,0]
+    bottomys = rotated_bounds[...,1]
+    # topxs = rotated_bounds[:,2]
+    # bottomxs = rotated_bounds[:,3]
+
+    height = np.int16(np.median(bottomys - topys))
+    # this also ensures the dimensions are even numbers, which is required when we are writing the video out
+    hspan = height // 2
+    # y midpoints, measured from the bottom, as it tends to miss the bottom a little more
+    mid_ys = bottomys - hspan
+
+    fretboard_vid = [frame[mid_ys[i]-hspan:mid_ys[i]+hspan] for i,frame in enumerate(rotated_vid)]
+    
+    height, width, z = fretboard_vid[0].shape
+
+    if (height / width) < 0.95 * target_ratio:
+        print("Cropping width")
+        # too long and skinny, crop in x dimension
+        target_width_span = int((height / target_ratio) // 2)
+        min_x = target_width_span
+        max_x = width - target_width_span
+        curr_handx = None
+        hand_xs = []
+        for i, pts in enumerate(handspos):
+            if pts is not None:
+                # for each possible hand position detected, keep the rightmost one that is within the bounds of the fretboard
+                good_xs = [x for (x,y) in pts if abs(y - mid_ys[i]) < (hspan * 1.2)]
+                if good_xs:
+                    curr_handx = max(min_x, min(max_x, max(good_xs)))
+            hand_xs.append(curr_handx)
+        
+        # replace any initial Nones recursively
+        def replace_nulls(i):
+            if hand_xs[i] is None:
+                hand_xs[i] = replace_nulls(i+1)
+            return hand_xs[i]
+        replace_nulls(0)
+
+        fretboard_vid = [ 
+            frame[:, hand_xs[i]-target_width_span:hand_xs[i]+target_width_span] for i,frame in enumerate(fretboard_vid)
+        ]
+    elif (height / width) > 1.05 * target_ratio:
+        # pad in y direction
+        print("Padding height")
+        target_height = int(width * 0.3)
+        fretboard_vid = [pad_to_target(frame, target_height) for frame in fretboard_vid]
+
+
+    if show_result:
+        showim(fretboard_vid[0], ms=2000)
+        showvid(fretboard_vid)
+
+    print("normalized shape:", fretboard_vid[0].shape)
 
     return fretboard_vid
 
@@ -669,33 +759,46 @@ def main(**kwargs):
 
     # process in batches of 500, cuz allocating a ton of frames all at once is too expensive
     timer()
-    fretboard_vid = []
+    full_rotated = []
+    full_bounds = []
+    full_hands = []
     for i in range(0, len(vid), 500):
         print("\nFrames", i, "through", i+500)
         batch = vid[i:i+500]
         blurred = blur(batch)
         # bg = bg_subtract(blurred)
-        edges = edge_process(batch, show_result=True and args.show)
+        edges = edge_process(blurred, show_result=False and args.show)
         timer()
-        linesvid, lines = find_lines(edges, batch, show_result=True and args.show)
+        linesvid, lines = find_lines(edges, batch, show_result=False and args.show)
         timer()
-        boxes = find_contours(linesvid, batch, show_result=True and args.show)
+        boxes = find_contours(linesvid, batch, show_result=False and args.show)
         timer()
-        boxes = smooth_bounding_boxes(boxes, batch, show_result=True and args.show)
+        boxes = smooth_bounding_boxes(boxes, batch, show_result=False and args.show)
         timer()
-        fretboard_batch = rot_and_crop(boxes, lines, batch, show_result=True and args.show)
+        angles = smooth_lines_angles(lines, show_result=False)
         timer()
-        fretboard_vid += fretboard_batch
-    
-    fretboard_vid = normalize_shape(fretboard_vid)
+        rotated_vid, fretboard_bounds = rotate_frames(boxes, angles, batch, show_result=False and args.show)
+        full_rotated += rotated_vid
+        full_bounds += fretboard_bounds
+        timer()
+        handbounds = detect_hands(rotated_vid, show_result=False and args.show)
+        full_hands += handbounds
+        timer()
+
+    # shape has to be the same for the whole video, so can't do it in batches
+    # target ratio is height/width ratio
+    TARGET_RATIO = 0.2
+    fretboard_vid = normalize_shape(full_rotated, full_bounds, full_hands, 
+                        target_ratio=TARGET_RATIO, show_result=True and args.show)
     timer()
+
 
     os.makedirs("data", exist_ok=True)
     writevid(fretboard_vid, args.outfile)
     timer()
 
     if not args.nofrets:
-        for i in range(len(vid), 500):
+        for i in range(0, len(fretboard_vid), 500):
             fretboard_batch = fretboard_vid[i:i+500]
             blurred = blur(fretboard_batch)
             fretboard_edges = edge_process(blurred, edge_threshold=50,
