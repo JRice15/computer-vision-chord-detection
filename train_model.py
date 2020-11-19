@@ -142,6 +142,9 @@ for i in range(len(xs)):
         print("ys", i, "len", len(ys[i]))
         raise ValueError()
 
+# free up memory
+del xraw, yraw
+
 """
 preprocessing
 """
@@ -158,14 +161,36 @@ for i in range(len(xs)):
     x += thisx
     y += ys[i]
 
+x = np.array(x)
+y = np.array(y)
+
+# free up memory
+del xs, ys
+
 # showvid(x[-300:], name="x", ms=100)
 
 img_shape = x[0].shape
 print("img_shape", img_shape)
 
+"""
+make train/test splits. We do not shuffle, because many frames can be nearly identical
+to others, and we don't want one of each to end up in the train and test sets
+"""
+# test set
+split = -int(0.15 * len(x))
+x, xtest = x[:split], x[split:]
+y, ytest = y[:split], y[split:]
+# validation and train sets
+split = -int(0.10 * len(x))
+xtrain, xval = x[:split], x[split:]
+ytrain, yval = y[:split], y[split:]
+# shuffle train set
+shuffle_inds = np.random.permutation(len(xtrain))
+xtrain = xtrain[shuffle_inds]
+ytrain = ytrain[shuffle_inds]
 
-x, xtest, y, ytest = train_test_split(x, y, test_size=0.15, random_state=3, shuffle=True)
-xtrain, xval, ytrain, yval = train_test_split(x, y, test_size=0.10, random_state=4, shuffle=True)
+# free up memory
+del x, y
 
 print(len(xtrain), "training images,", len(xval), "validation,", len(xtest), "test")
 
@@ -222,9 +247,9 @@ if not args.load:
     start = time.time()
     try:
         H = model.fit(
-            np.array(xtrain),
-            np.array(ytrain),
-            validation_data=(np.array(xval), np.array(yval)),
+            xtrain,
+            ytrain,
+            validation_data=(xval, yval),
             batch_size=config.batchsize,
             epochs=config.epochs,
             verbose=1,
@@ -253,11 +278,11 @@ testing
 """
 
 print("Evaluating on test set")
-model.evaluate(np.array(xtest), np.array(ytest))
+model.evaluate(xtest, ytest)
 
 # on training set
 num = 10
-train_short = np.array(xtrain[:num])
+train_short = xtrain[:num]
 
 trainpreds = model.predict(train_short)
 
@@ -272,7 +297,7 @@ writevid(vid, "stats/"+args.name+"/results_visualization_trainset")
 
 
 # on test set
-testpreds = model.predict(np.array(xtest))
+testpreds = model.predict(xtest)
 
 vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
             interpolation=cv.INTER_LINEAR) for i in xtest]
