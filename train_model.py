@@ -145,53 +145,61 @@ for i in range(len(xs)):
 # free up memory
 del xraw, yraw
 
+print(len(xs), "data videos found")
+
 """
 preprocessing
 """
 IM_HEIGHT = 108
 IM_WIDTH = 540
-print("height/width ratio:", IM_HEIGHT/IM_WIDTH)
+print("target height/width ratio:", IM_HEIGHT/IM_WIDTH)
 
-x = []
-y = []
+xtrain, xval, xtest = [], [], []
+ytrain, yval, ytest = [], [], []
+print("Processing videos: ", end="")
 for i in range(len(xs)):
-    thisx = [cv.resize(im, dsize=(IM_WIDTH,IM_HEIGHT), interpolation=cv.INTER_AREA) for im in xs[i]]
+    print(i, end=" ", flush=True)
+    x = [cv.resize(im, dsize=(IM_WIDTH,IM_HEIGHT), interpolation=cv.INTER_AREA) for im in xs[i]]
+    y = ys[i]
     if not args.nodisplay:
-        showim(thisx[0], ms=1000)
-    x += thisx
-    y += ys[i]
+        showim(x[0], ms=400)
 
-x = np.array(x)
-y = np.array(y)
+    # use last 15% of each video as test set
+    testsplit = -int(0.15 * len(x))
+    xtest += x[testsplit:]
+    ytest += y[testsplit:]
+    x = x[:testsplit]
+    y = y[:testsplit]
 
+    # use last 10% of video (excluding test set) as validation
+    valsplit = -int(0.10 * len(x))
+    xtrain += x[:valsplit]
+    xval += x[valsplit:]
+    ytrain += y[:valsplit]
+    yval += y[valsplit:]
+
+print()
 # free up memory
-del xs, ys
+del x, y, xs, ys
 
-# showvid(x[-300:], name="x", ms=100)
+# convert to numpy
+xtrain = np.array(xtrain)
+xval = np.array(xval)
+xtest = np.array(xtest)
+ytrain = np.array(ytrain)
+yval = np.array(yval)
+ytest = np.array(ytest)
 
-img_shape = x[0].shape
-print("img_shape", img_shape)
-
-"""
-make train/test splits. We do not shuffle, because many frames can be nearly identical
-to others, and we don't want one of each to end up in the train and test sets
-"""
-# test set
-split = -int(0.15 * len(x))
-x, xtest = x[:split], x[split:]
-y, ytest = y[:split], y[split:]
-# validation and train sets
-split = -int(0.10 * len(x))
-xtrain, xval = x[:split], x[split:]
-ytrain, yval = y[:split], y[split:]
 # shuffle train set
 shuffle_inds = np.random.permutation(len(xtrain))
 xtrain = xtrain[shuffle_inds]
 ytrain = ytrain[shuffle_inds]
 
-# free up memory
-del x, y
+if not args.nodisplay:
+    showvid(xtrain[:10], name="x", ms=100)
 
+img_shape = xtrain[0].shape
+print("img_shape", img_shape)
 print(len(xtrain), "training images,", len(xval), "validation,", len(xtest), "test")
 
 """
