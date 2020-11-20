@@ -4,5 +4,6 @@
     "lr": 0.001,
     "epochs": 50,
     "lr_sched_freq": 10,
-    "lr_sched_factor": 0.2
+    "lr_sched_factor": 0.2,
+    "loss": "sparsecategoricalcrossentropy"
 }

@@ -6,7 +6,7 @@ from keras import layers
 from keras.layers import (Activation, Add, BatchNormalization, Concatenate,
                           Conv2D, Dense, Dropout, Flatten,
                           GlobalAveragePooling2D, Input, Lambda, MaxPooling2D,
-                          Multiply, ReLU, Reshape)
+                          Multiply, ReLU, Reshape, Softmax)
 from keras.models import Model
 import logging
 from keras.optimizers import Adam
@@ -17,15 +17,14 @@ if not tf.__version__.startswith("2.2") or not keras.__version__.startswith("2.4
 print("tf:", tf.__version__)
 print("keras:", keras.__version__)
 
-MAX_FRET = 6
+MAX_FRET = 5
 
-def xception(input_shape):
+def xception(inpt):
     """
     keras xception network. see https://keras.io/api/applications/
     """
-    inpt = Input(input_shape)
     base = keras.applications.Xception(include_top=False, weights=None, 
-                input_shape=input_shape)
+                input_shape=inpt.shape)
     x = base(inpt)
     x = GlobalAveragePooling2D()(x)
 
@@ -33,62 +32,32 @@ def xception(input_shape):
     x = ReLU()(x)
     x = Dropout(0.4)(x)
 
-    x = Dense(32)(x)
-    x = ReLU()(x)
-    x = Dropout(0.4)(x)
+    return x
 
-    x = Dense(6)(x)
-    # sigmoid limits to between 0 and 1. Then we multiply by the constant to
-    # allow a range from 0 to MAX_FRET to be predicted for each string
-    x = Activation('sigmoid')(x)
-    x = Lambda(lambda v: MAX_FRET * v)(x)
-
-    return Model(inpt, x)
-
-def mobilenetv2(input_shape):
+def mobilenetv2(inpt):
     """
     keras mobilenetv2
     """
-    inpt = Input(input_shape)
     base = keras.applications.MobileNetV2(include_top=False, weights=None,
-                input_shape=input_shape, alpha=1.0)
+                input_shape=inpt.shape, alpha=1.0)
     # x = keras.applications.mobilenet_v2.preprocess_input(inpt)
     x = base(inpt)
     # x = GlobalAveragePooling2D()(x)
 
-    x = Dense(128)(x)
+    x = Dense(256)(x)
     x = ReLU()(x)
     x = Dropout(0.5)(x)
 
-    x = Dense(8)(x)
-    x = ReLU()(x)
-    x = Dropout(0.5)(x)
-
-    x = Flatten()(x)
-    x = Dense(64)(x)
-    x = ReLU()(x)
-    x = Dropout(0.5)(x)
-
-    x = Dense(32)(x)
-    x = ReLU()(x)
-    x = Dropout(0.5)(x)
-
-    x = Dense(6)(x)
-    # sigmoid limits to between 0 and 1. Then we multiply by the constant to
-    # allow a range from 0 to MAX_FRET to be predicted for each string
-    x = Activation('sigmoid')(x)
-    x = Lambda(lambda v: MAX_FRET * v)(x)
-
-    return Model(inpt, x)
+    return x
 
 
 
-def my_mobilenet(input_shape, alpha=0.5, weights='imagenet'):
+def my_mobilenet(inpt, alpha=0.5, weights='imagenet'):
     """
     https://github.com/tensorflow/tensorflow/blob/v2.3.1/tensorflow/python/keras/applications/mobilenet_v2.py#L496
     """
 
-    input_tensor = Input(input_shape)
+    input_tensor = inpt
 
     _batch, rows, cols, channels = input_tensor.shape
 
@@ -174,7 +143,7 @@ def my_mobilenet(input_shape, alpha=0.5, weights='imagenet'):
     else:
         last_block_filters = 1280
 
-    # these layers actually get scrapped; they are just so the model size works to load stuff
+    # these layers actually get scrapped; they are just so the model size works to load imagenet weights
     x = layers.Conv2D(
         last_block_filters, kernel_size=1, use_bias=False, name='Conv_1')(
             x)
@@ -202,7 +171,7 @@ def my_mobilenet(input_shape, alpha=0.5, weights='imagenet'):
 
     real_output = weightsmodel.layers[-4].output
 
-    x = layers.Conv2D(64, kernel_size=(2,8), use_bias=False, name='Conv_1')(real_output)
+    x = layers.Conv2D(64, kernel_size=(2,4), use_bias=False, name='Conv_1')(real_output)
     x = layers.BatchNormalization(
         axis=channel_axis, epsilon=1e-3, momentum=0.999, name='Conv_1_bn')(x)
     x = layers.ReLU(6., name='relu_1')(x)
@@ -214,23 +183,10 @@ def my_mobilenet(input_shape, alpha=0.5, weights='imagenet'):
 
     x = Flatten()(x)
     x = Dropout(0.5)(x)
+    x = Dense(256)(x)
+    x = ReLU(6.)(x)
 
-    x = Dense(64)(x)
-    x = ReLU(MAX_FRET)(x)
-    x = Dropout(0.5)(x)
-
-    x = Dense(16)(x)
-    x = ReLU(MAX_FRET)(x)
-    x = Dropout(0.5)(x)
-
-    x = Dense(8)(x)
-    x = ReLU(MAX_FRET)(x)
-
-    x = Dense(6)(x)
-
-    model = Model(input_tensor, x)
-
-    return model
+    return x
 
 
 def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id):
@@ -317,41 +273,73 @@ def _make_divisible(v, divisor, min_value=None):
 
 
 def correct_pad(inputs, kernel_size):
-  """Returns a tuple for zero-padding for 2D convolution with downsampling.
-  Arguments:
-    inputs: Input tensor.
-    kernel_size: An integer or tuple/list of 2 integers.
-  Returns:
-    A tuple.
-  """
-  img_dim = 2 if K.image_data_format() == 'channels_first' else 1
-  input_size = K.int_shape(inputs)[img_dim:(img_dim + 2)]
-  if isinstance(kernel_size, int):
-    kernel_size = (kernel_size, kernel_size)
-  if input_size[0] is None:
-    adjust = (1, 1)
-  else:
-    adjust = (1 - input_size[0] % 2, 1 - input_size[1] % 2)
-  correct = (kernel_size[0] // 2, kernel_size[1] // 2)
-  return ((correct[0] - adjust[0], correct[0]),
+    """Returns a tuple for zero-padding for 2D convolution with downsampling.
+    Arguments:
+        inputs: Input tensor.
+        kernel_size: An integer or tuple/list of 2 integers.
+    Returns:
+        A tuple.
+    """
+    img_dim = 2 if K.image_data_format() == 'channels_first' else 1
+    input_size = K.int_shape(inputs)[img_dim:(img_dim + 2)]
+    if isinstance(kernel_size, int):
+        kernel_size = (kernel_size, kernel_size)
+    if input_size[0] is None:
+        adjust = (1, 1)
+    else:
+        adjust = (1 - input_size[0] % 2, 1 - input_size[1] % 2)
+    correct = (kernel_size[0] // 2, kernel_size[1] // 2)
+    return ((correct[0] - adjust[0], correct[0]),
           (correct[1] - adjust[1], correct[1]))
 
 
 
-def make_model(name, input_shape):
+def make_model(name, input_shape, output_confidences):
     """
     get model from case insensitive name
+    args:
+        model name
+        input shape (not including batch size)
+        output_confidences (bool): whether loss to output a prediction, or a 
+            softmax confidence for each string
     """
+    inpt = Input(input_shape)
+
     name = name.lower()
     if name == "xception":
-        return xception(input_shape)
-    if name == "mobilenetv2":
-        return mobilenetv2(input_shape)
-    if name == "mymobilenet":
-        return my_mobilenet(input_shape)
+        x = xception(inpt)
+    elif name == "mobilenetv2":
+        x = mobilenetv2(inpt)
+    elif name == "mymobilenet":
+        x = my_mobilenet(inpt)
+    else:
+        raise ValueError("no model named '" + name + "'")
 
-    raise ValueError("no model named '" + name + "'")
 
+    # all models output a vector of size 256
+    if output_confidences:
+        x = Dense(64)(x)
+        x = ReLU()(x)
+        x = Dropout(0.4)(x)
+
+        # if the maximum fret is 5, there are 6 options, because 0 is a possibility
+        NUM_FRETS = MAX_FRET + 1
+        x = Dense(6 * NUM_FRETS)(x)
+        x = Reshape((6,NUM_FRETS))(x)
+        x = Softmax(axis=-1)(x)
+
+    else:
+        x = Dense(32)(x)
+        x = ReLU()(x)
+        x = Dropout(0.4)(x)
+
+        x = Dense(6)(x)
+        # sigmoid limits to between 0 and 1. Then we multiply by the constant to
+        # allow a range from 0 to MAX_FRET to be predicted for each string
+        x = Activation('sigmoid')(x)
+        x = Lambda(lambda v: MAX_FRET * v)(x)
+
+    return Model(inpt, x)
 
 
 

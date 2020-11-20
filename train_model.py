@@ -25,13 +25,15 @@ args = parser.parse_args()
 
 class TrainConfig:
 
-    def __init__(self, epochs, model, batchsize, lr, lr_sched_freq, lr_sched_factor):
+    def __init__(self, epochs, model, batchsize, lr, lr_sched_freq, 
+            lr_sched_factor, loss):
         self.epochs = epochs
         self.model = model
         self.batchsize = batchsize
         self.lr = lr
         self.lr_sched_freq = lr_sched_freq
         self.lr_sched_factor = lr_sched_factor
+        self.loss = loss
     
     def __str__(self):
         return str(vars(self))
@@ -211,20 +213,46 @@ class FretAccuracy(keras.metrics.Accuracy):
     custom metric that rounds predictions to closest integer
     """
 
+    def __init__(self, confidences, **kwargs):
+        super().__init__(**kwargs)
+        self.confidences = confidences
+
     def update_state(self, y_true, y_pred):
-        y_pred = tf.round(y_pred)
+        if self.confidences:
+            y_pred = K.argmax(y_pred, axis=-1)
+        else:
+            y_pred = tf.round(y_pred)
         return super().update_state(y_true, y_pred)
 
+    def get_config(self):
+        config = super().get_config()
+        return config.update(
+            {"confidences": self.confidences}
+        )
 
 if not args.load:
-    model = make_model(config.model, img_shape)
+    lossname = args.loss.lower()
+    confidences = False
+    if lossname == "mse":
+        loss = keras.losses.mean_squared_error
+    elif lossname == "huber":
+        loss = keras.losses.Huber(delta=1)
+    elif lossname == "mae":
+        loss = keras.losses.mean_absolute_error
+    elif lossname == "sparsecategoricalcrossentropy":
+        loss = keras.losses.SparseCategoricalCrossentropy()
+        confidences = True
+    else:
+        raise ValueError("No such loss '{}'".format(args.loss))
+
+    model = make_model(config.model, img_shape, output_confidences=confidences)
 
     model.summary()
 
     model.compile(
-        loss="mse",
+        loss=loss,
         optimizer=Adam(config.lr),
-        metrics=[FretAccuracy(), "mae"])
+        metrics=[FretAccuracy(confidences), "mae"])
 
 
     """
