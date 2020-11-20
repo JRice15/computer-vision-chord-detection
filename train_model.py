@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import time
+import pprint
 
 import keras
 import numpy as np
@@ -34,6 +35,7 @@ class TrainConfig:
         self.lr_sched_freq = lr_sched_freq
         self.lr_sched_factor = lr_sched_factor
         self.loss = loss
+        pprint.pprint(vars(self))
     
     def __str__(self):
         return str(vars(self))

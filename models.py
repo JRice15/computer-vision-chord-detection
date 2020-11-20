@@ -24,9 +24,13 @@ def xception(inpt):
     keras xception network. see https://keras.io/api/applications/
     """
     base = keras.applications.Xception(include_top=False, weights=None, 
-                input_shape=inpt.shape)
+                input_shape=inpt.shape[1:])
     x = base(inpt)
     x = GlobalAveragePooling2D()(x)
+
+    x = Dense(1024)(x)
+    x = ReLU()(x)
+    x = Dropout(0.4)(x)
 
     x = Dense(256)(x)
     x = ReLU()(x)
@@ -39,7 +43,7 @@ def mobilenetv2(inpt):
     keras mobilenetv2
     """
     base = keras.applications.MobileNetV2(include_top=False, weights=None,
-                input_shape=inpt.shape, alpha=1.0)
+                input_shape=inpt.shape[1:], alpha=1.0)
     # x = keras.applications.mobilenet_v2.preprocess_input(inpt)
     x = base(inpt)
     # x = GlobalAveragePooling2D()(x)
