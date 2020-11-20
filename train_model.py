@@ -231,7 +231,7 @@ class FretAccuracy(keras.metrics.Accuracy):
         )
 
 if not args.load:
-    lossname = args.loss.lower()
+    lossname = config.loss.lower()
     confidences = False
     if lossname == "mse":
         loss = keras.losses.mean_squared_error
@@ -243,7 +243,7 @@ if not args.load:
         loss = keras.losses.SparseCategoricalCrossentropy()
         confidences = True
     else:
-        raise ValueError("No such loss '{}'".format(args.loss))
+        raise ValueError("No such loss '{}'".format(config.loss))
 
     model = make_model(config.model, img_shape, output_confidences=confidences)
 
