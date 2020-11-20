@@ -210,31 +210,21 @@ print(len(xtrain), "training images,", len(xval), "validation,", len(xtest), "te
 make model
 """
 
-class FretAccuracy(keras.metrics.Accuracy):
+def fret_accuracy():
     """
-    custom metric that rounds predictions to closest integer
+    round to nearest fret
     """
+    acc = keras.metrics.Accuracy()
+    def accuracy(y_true, y_pred):
+        y_pred = tf.round(y_pred)
+        return acc(y_true, y_pred)
+    return accuracy
 
-    def __init__(self, confidences, **kwargs):
-        super().__init__(**kwargs)
-        self.confidences = confidences
-
-    def update_state(self, y_true, y_pred):
-        if self.confidences:
-            y_pred = K.argmax(y_pred, axis=-1)
-        else:
-            y_pred = tf.round(y_pred)
-        return super().update_state(y_true, y_pred)
-
-    def get_config(self):
-        config = super().get_config()
-        return config.update(
-            {"confidences": self.confidences}
-        )
 
 if not args.load:
     lossname = config.loss.lower()
-    confidences = False
+    print("Using loss", lossname)
+    categorical = False
     if lossname == "mse":
         loss = keras.losses.mean_squared_error
     elif lossname == "huber":
@@ -242,19 +232,26 @@ if not args.load:
     elif lossname == "mae":
         loss = keras.losses.mean_absolute_error
     elif lossname == "sparsecategoricalcrossentropy":
+        # regular scc from keras.losses doesnt work?
         loss = keras.losses.SparseCategoricalCrossentropy()
-        confidences = True
+        categorical = True
     else:
         raise ValueError("No such loss '{}'".format(config.loss))
 
-    model = make_model(config.model, img_shape, output_confidences=confidences)
+    model = make_model(config.model, img_shape, output_confidences=categorical)
 
     model.summary()
+
+    if categorical:
+        metrics = ["sparse_categorical_accuracy"]
+    else:
+        metrics = [fret_accuracy(), "mae"]
 
     model.compile(
         loss=loss,
         optimizer=Adam(config.lr),
-        metrics=[FretAccuracy(confidences), "mae"])
+        metrics=metrics,
+    )
 
 
     """
@@ -302,7 +299,7 @@ if not args.load:
     save_history(H, args.name, end-start, config, marker_step=step)
 
 
-objs = {"FretAccuracy": FretAccuracy}
+objs = {"accuracy": fret_accuracy()}
 
 print("Loading model...")
 model = keras.models.load_model("models/"+args.name+".hdf5", custom_objects=objs)

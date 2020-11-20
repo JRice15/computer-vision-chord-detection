@@ -46,7 +46,7 @@ def mobilenetv2(inpt):
                 input_shape=inpt.shape[1:], alpha=1.0)
     # x = keras.applications.mobilenet_v2.preprocess_input(inpt)
     x = base(inpt)
-    # x = GlobalAveragePooling2D()(x)
+    x = GlobalAveragePooling2D()(x)
 
     x = Dense(256)(x)
     x = ReLU()(x)
