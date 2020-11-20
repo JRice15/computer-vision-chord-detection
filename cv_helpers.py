@@ -81,13 +81,16 @@ def showvid(vid, name="window", ms=25):
     except:
         pass
 
-def annotate_vid(vid, preds, trues):
-    for i,frame in enumerate(vid):
+def annotate_vid(vid, preds, trues, categorical):
+    for i, frame in enumerate(vid):
         xloc = 5
         for j in range(6):
-            pred = round(preds[i][j])
+            if categorical:
+                pred = np.argmax(preds[i][j])
+            else:
+                pred = round(preds[i][j])
             true = trues[i][j]
-            if round(pred) == true:
+            if pred == true:
                 c = (0,255,0)
             else:
                 c = (0,0,255)

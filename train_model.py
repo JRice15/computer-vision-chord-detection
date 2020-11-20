@@ -22,6 +22,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--name",required=True)
 parser.add_argument("--load",action="store_true")
 parser.add_argument("--nodisplay",action="store_true")
+parser.add_argument("--test",action="store_true",help="load a small portion of the data for a quick test run")
 args = parser.parse_args()
 
 class TrainConfig:
@@ -93,7 +94,7 @@ xraw = []
 
 for i in range(len(xnames)):
     yraw.append(np.load("data/"+ynames[i]))
-    vid = readvid("data/"+xnames[i])
+    vid = readvid("data/"+xnames[i], maxframes=(100 if args.test else None))
     print(len(vid), "frames")
     xraw.append(vid)
 
@@ -131,7 +132,7 @@ for i in range(len(yraw)):
             chord_len = len(xraw[i]) - int(yraw[i][y_ind_curr][0])
         # only keep frames solidly in the middle of a chord (no transitions)
         pos_in_chord = vid_ind - vid_ind_curr
-        if not ((pos_in_chord / chord_len < 0.2) or (pos_in_chord / chord_len > 0.7)):
+        if not ((pos_in_chord / chord_len < 0.2) or (pos_in_chord / chord_len > 0.8)):
             thisy.append(chord)
             thisx.append(xraw[i][vid_ind])
         vid_ind += 1
@@ -175,8 +176,8 @@ for i in range(len(xs)):
     x = x[:testsplit]
     y = y[:testsplit]
 
-    # use last 10% of video (excluding test set) as validation
-    valsplit = -int(0.10 * len(x))
+    # use last 15% of remaining video (excluding test set) as validation
+    valsplit = -int(0.15 * len(x))
     xtrain += x[:valsplit]
     xval += x[valsplit:]
     ytrain += y[:valsplit]
@@ -194,13 +195,13 @@ ytrain = np.array(ytrain)
 yval = np.array(yval)
 ytest = np.array(ytest)
 
+if not args.nodisplay:
+    showvid(xtrain[:50], name="x", ms=25)
+
 # shuffle train set
 shuffle_inds = np.random.permutation(len(xtrain))
 xtrain = xtrain[shuffle_inds]
 ytrain = ytrain[shuffle_inds]
-
-if not args.nodisplay:
-    showvid(xtrain[:10], name="x", ms=100)
 
 img_shape = xtrain[0].shape
 print("img_shape", img_shape)
@@ -276,7 +277,7 @@ if not args.load:
         History(),
         LearningRateScheduler(lr_sched),
         ModelCheckpoint("models/"+args.name+".hdf5", save_best_only=True, verbose=1, period=1),
-        EarlyStopping(monitor='val_loss', verbose=1, patience=int(config.lr_sched_freq * 1.4))
+        EarlyStopping(monitor='val_loss', verbose=1, patience=int(config.lr_sched_freq * 1.5))
     ]
 
     start = time.time()
@@ -299,13 +300,22 @@ if not args.load:
     save_history(H, args.name, end-start, config, marker_step=step)
 
 
-objs = {"accuracy": fret_accuracy()}
 
 print("Loading model...")
+objs = {"accuracy": fret_accuracy()}
 model = keras.models.load_model("models/"+args.name+".hdf5", custom_objects=objs)
 
+
 if args.load:
+    # if we are just loading and have not trained
     model.summary()
+
+    # if (batchsize, string, probabilities) then categorical, (batchsize, stringpred) is regression-type
+    shape = model.get_output_shape_at(-1)
+    if len(shape) > 2:
+        categorical = True
+    else:
+        categorical = False
 
 
 """
@@ -313,7 +323,13 @@ testing
 """
 
 print("Evaluating on test set")
-model.evaluate(xtest, ytest)
+results = model.evaluate(xtest, ytest)
+with open("stats/"+args.name+"/stats.txt", "a") as f:
+    f.write("\nTest results:\n")
+    for i,name in enumerate(model.metrics_names):
+        print(" ", name+":", results[i])
+        f.write(name+": "+str(results[i])+"\n")
+
 
 # on training set
 num = 10
@@ -325,7 +341,7 @@ scaleup = 2.0
 vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
             interpolation=cv.INTER_LINEAR) for i in train_short]
 
-annotate_vid(vid, trainpreds, ytrain[:num])
+annotate_vid(vid, trainpreds, ytrain[:num], categorical)
 if not args.nodisplay:
     showvid(vid, name="train ims", ms=500)
 writevid(vid, "stats/"+args.name+"/results_visualization_trainset")
@@ -337,7 +353,7 @@ testpreds = model.predict(xtest)
 vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
             interpolation=cv.INTER_LINEAR) for i in xtest]
 
-annotate_vid(vid, testpreds, ytest)
+annotate_vid(vid, testpreds, ytest, categorical)
 if not args.nodisplay:
     showvid(vid, name="test set", ms=35)
 writevid(vid, "stats/"+args.name+"/results_visualization_testset")
