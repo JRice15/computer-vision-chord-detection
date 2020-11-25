@@ -19,6 +19,18 @@ print("keras:", keras.__version__)
 
 MAX_FRET = 5
 
+
+def fret_accuracy():
+    """
+    round to nearest fret
+    """
+    acc = keras.metrics.Accuracy()
+    def accuracy(y_true, y_pred):
+        y_pred = tf.round(y_pred)
+        return acc(y_true, y_pred)
+    return accuracy
+
+
 def xception(inpt):
     """
     keras xception network. see https://keras.io/api/applications/
@@ -300,7 +312,7 @@ def correct_pad(inputs, kernel_size):
 
 def make_model(name, input_shape, output_confidences):
     """
-    get model from case insensitive name
+    get imagemodel from case insensitive name
     args:
         model name
         input shape (not including batch size)
@@ -346,5 +358,112 @@ def make_model(name, input_shape, output_confidences):
     return Model(inpt, x)
 
 
+
+
+class MyConv1DTranspose(tf.keras.layers.Layer):
+    """tf forgot about this one, until v2.3 I guess"""
+
+    def __init__(self, filters, kernel_size, strides=1, padding='valid', **kwargs):
+        super().__init__(**kwargs)
+        self.filters = filters
+        self.kernel_size = kernel_size
+        self.strides = strides
+        self.padding = padding
+        self.conv2dtranspose = tf.keras.layers.Conv2DTranspose(
+          filters, (kernel_size, 1), (strides, 1), padding
+        )
+
+    def call(self, x):
+        x = tf.expand_dims(x, axis=2)
+        x = self.conv2dtranspose(x)
+        x = tf.squeeze(x, axis=2)
+        return x
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "filters": self.filters,
+            "kernel_size": self.kernel_size,
+            "strides": self.strides,
+            "padding": self.padding
+        })
+        return config
+
+
+def make_inference_model(inpt_shape, categorical=True):
+    """
+    1d convolutional autoencoder
+    """
+    inpt = layers.Input(inpt_shape)
+    x = inpt
+
+    if categorical:
+        inpt_length, numstrings, numfrets = inpt_shape
+        depth = numstrings * numfrets
+        # flatten categorical input
+        x = layers.Reshape((inpt_length, depth), name="reshape1")(x)
+    else:
+        inpt_length, depth = inpt_shape
+
+    ### Encoding (8x downsample)
+    # kernel size and strides are format of (timesteps, number of strings)
+    x = layers.Conv1D(depth, kernel_size=7, strides=2, use_bias=False, 
+            padding="same")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.SpatialDropout1D(0.4)(x)
+
+    x = layers.Conv1D(2*depth, kernel_size=7, strides=2, use_bias=False, 
+            padding="same")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.SpatialDropout1D(0.4)(x)
+
+    x = layers.Conv1D(3*depth, kernel_size=5, strides=2, use_bias=False, 
+            padding="same")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.SpatialDropout1D(0.4)(x)
+
+    ### Middle
+    x = layers.Conv1D(3*depth, kernel_size=5, strides=1, use_bias=False, 
+            padding="same")(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.ReLU()(x)
+    x = layers.SpatialDropout1D(0.4)(x)
+    # one LSTM goes back to front, the other front to back
+    x = layers.LSTM(3*depth, return_sequences=True, 
+            # go_backwards=True, 
+            # dropout=0.4, 
+            name="lstm1")(x)
+    x = layers.BatchNormalization()(x)
+    # x = layers.LSTM(3*depth, return_sequences=True, go_backwards=True, 
+    #         dropout=0.4, 
+    #         name="lstm2")(x)
+    # x = layers.BatchNormalization()(x)
+
+
+
+    ### Decoding
+    # upsample 16x with convolution to full length
+    x = MyConv1DTranspose(2*depth, kernel_size=5, strides=2, padding="same")(x)
+    x = layers.ReLU()(x)
+    x = Dense(depth)(x)
+    # x = layers.SpatialDropout1D(0.4)(x)
+
+    # x = MyConv1DTranspose(depth, kernel_size=5, strides=4, padding="same")(x)
+    # x = layers.SpatialDropout1D(0.4)(x)
+    # we don't have to have super fine-grain precision. missing a 
+    #  transition by 4 frames is fine
+    x = layers.UpSampling1D(4)(x)
+
+    if categorical:
+        x = layers.Reshape(inpt_shape, name="reshape2")(x)
+        x = layers.Softmax(axis=-1)(x)
+    else:
+        x = layers.Activation('sigmoid')(x)
+        x = layers.Lambda(lambda v: (numfrets-1) * v)(x)
+
+    return Model(inpt, x)
 
 
