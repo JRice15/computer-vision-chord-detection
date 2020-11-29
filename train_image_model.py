@@ -25,14 +25,15 @@ from sklearn.model_selection import train_test_split
 from src.cv_helpers import *
 from src.models import make_model, fret_accuracy
 from src.save_stats import save_history
-from src.test_image_model import test_im_model
-from src.load_data import load_data
+from src.load_data import load_all_data
+from test_image_model import test_im_model
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--name",required=True)
+parser.add_argument("--name",required=True,help="name to save the model under")
 parser.add_argument("--nodisplay",action="store_true")
 parser.add_argument("--test",action="store_true",help="load a small portion of the data for a quick test run")
+parser.usage = parser.format_help()
 args = parser.parse_args()
 
 if args.test:
@@ -66,7 +67,7 @@ config = TrainConfig(**config_dict)
 """
 load data
 """
-data = load_data(not args.nodisplay, args.test)
+data = load_all_data(not args.nodisplay, args.test)
 xtrain, xval, xtest, ytrain, yval, ytest = data
 
 # shuffle train set
@@ -161,4 +162,5 @@ save_history(H, args.name, end-start, config, marker_step=step)
 
 
 # run testing
-test_im_model(args.name, xtest, ytest, args.nodisplay, args.summary, categorical)
+test_im_model(args.name, xtest, ytest, xtrain=xtrain, ytrain=ytrain, nodisplay=args.nodisplay, 
+    summary=False, categorical=categorical)

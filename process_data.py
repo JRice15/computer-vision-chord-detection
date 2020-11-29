@@ -10,6 +10,7 @@ from src.cv_helpers import *
 parser = argparse.ArgumentParser()
 parser.add_argument("--file",default=None,help="specify one specific file in 'raw_data' to process")
 parser.add_argument("--overwrite",action="store_true",help="overwrite all fretboard videos in the 'data/' dir")
+parser.usage = parser.format_help()
 args = parser.parse_args()
 
 

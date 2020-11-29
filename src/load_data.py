@@ -29,8 +29,8 @@ def get_all_data_names():
             if ext == ".npy":
                 if name in found_exts:
                     if found_exts[name] != ".npy":
-                        xnames.append(name + found_exts[name])
-                        ynames.append(filename)
+                        xnames.append("data/" + name + found_exts[name])
+                        ynames.append("data/" + filename)
                     else:
                         raise ValueError("Multiple .npy with name '" + filename + "'")
                 else:
@@ -58,7 +58,7 @@ def load_raw_files(xnames, ynames, do_test=False, display=False, y_only=False):
 
     for i in range(len(xnames)):
         yraw.append(np.load(ynames[i]))
-        vid = readvid(xnames[i], maxframes=(100 if do_test else None))
+        vid = readvid(xnames[i], maxframes=(30 if do_test else None))
         print(len(vid), "frames")
         vid = preprocess_vid(vid, display=display)
         xraw.append(vid)
@@ -96,13 +96,12 @@ def expand_chords(xraw, yraw, no_transitions=False):
                 chord_len = len(xraw[i]) - int(yraw[i][y_ind_curr][0])
             # only keep frames solidly in the middle of a chord (no transitions)
             pos_in_chord = vid_ind - vid_ind_curr
-            if no_transitions and not ((pos_in_chord / chord_len < 0.2) or (pos_in_chord / chord_len > 0.8)):
+            if (not no_transitions) or not ((pos_in_chord / chord_len < 0.2) or (pos_in_chord / chord_len > 0.8)):
                 thisy.append(chord)
                 thisx.append(xraw[i][vid_ind])
             vid_ind += 1
         ys.append(thisy)
         xs.append(thisx)
-
 
     # make sure everythig is the same size
     assert len(xs) == len(ys)

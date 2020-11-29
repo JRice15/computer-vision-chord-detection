@@ -36,6 +36,7 @@ parser.add_argument("--load",action="store_true")
 parser.add_argument("--nodisplay",action="store_true")
 parser.add_argument("--test",action="store_true",help="load a small portion of the data for a quick test run")
 parser.add_argument("--repredict",action="store_true",help="re-predict; run the imagemodel on the training data again, to generate update predictions")
+parser.usage = parser.format_help()
 args = parser.parse_args()
 
 modelname = args.name + "_inference"

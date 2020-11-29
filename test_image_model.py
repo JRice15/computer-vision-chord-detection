@@ -7,18 +7,11 @@ import pprint
 import keras
 import numpy as np
 import tensorflow as tf
-from keras import backend as K
-from keras.callbacks import (History, LearningRateScheduler, ModelCheckpoint,
-                             ReduceLROnPlateau, EarlyStopping)
-from keras.models import Model
-from keras.optimizers import Adam
 from sklearn.model_selection import train_test_split
 
 from src.cv_helpers import *
 from src.models import make_model, fret_accuracy
-from src.save_stats import save_history
-from src.load_data import load_all_data, load_one
-
+from src.load_data import load_one
 
 def test_im_model(name, xtest, ytest, xtrain=None, ytrain=None, nodisplay=False, 
         summary=False, categorical=False):
@@ -28,7 +21,6 @@ def test_im_model(name, xtest, ytest, xtrain=None, ytrain=None, nodisplay=False,
     print("Loading model...")
     objs = {"accuracy": fret_accuracy()}
     model = keras.models.load_model("models/"+name+".hdf5", custom_objects=objs)
-
 
     if summary:
         # if we are just loading and have not trained
@@ -42,52 +34,47 @@ def test_im_model(name, xtest, ytest, xtrain=None, ytrain=None, nodisplay=False,
         else:
             categorical = False
 
-
     """
     testing
     """
-
-    print(model.callbacks)
-    a = [i for i in model.callbacks if isinstance(i, keras.callbacks.ProgbarLogger)][0]
-    print(a)
-
     print("Evaluating on test set")
-    results = model.evaluate(xtest, ytest)
-    with open("stats/"+args.name+"/stats.txt", "a") as f:
+    results = model.evaluate(xtest, ytest, verbose=1)
+    with open("stats/"+name+"/stats.txt", "a") as f:
         f.write("\nTest results:\n")
-        for i,name in enumerate(model.metrics_names):
-            print(" ", name+":", results[i])
-            f.write(name+": "+str(results[i])+"\n")
-
+        for i,metric in enumerate(model.metrics_names):
+            print(" ", metric+":", results[i])
+            f.write(metric+": "+str(results[i])+"\n")
 
     scaleup = 2.0
 
+    # on training set, if available
     if xtrain is not None:
-        # on training set
+        print("Generating video on train set predictions")
         num = 10
         train_short = xtrain[:num]
 
-        trainpreds = model.predict(train_short)
+        trainpreds = model.predict(train_short, verbose=1)
 
         vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
                     interpolation=cv.INTER_LINEAR) for i in train_short]
 
         annotate_vid(vid, trainpreds, ytrain[:num], categorical)
-        if not args.nodisplay:
+        if not nodisplay:
             showvid(vid, name="train ims", ms=500)
         writevid(vid, "stats/"+name+"/results_visualization_trainset")
 
-
     # on test set
-    testpreds = model.predict(xtest)
+    print("Generating video on test set predictions")
+    testpreds = model.predict(xtest, verbose=1)
 
     vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
                 interpolation=cv.INTER_LINEAR) for i in xtest]
 
     annotate_vid(vid, testpreds, ytest, categorical)
-    if not args.nodisplay:
+    if not nodisplay:
         showvid(vid, name="test set", ms=35)
     writevid(vid, "stats/"+name+"/results_visualization_testset")
+
 
 
 if __name__ == "__main__":
@@ -102,4 +89,5 @@ if __name__ == "__main__":
     yfile = directory + "/" + file + ".npy"
     x, y = load_one(args.file, yfile, not args.nodisplay)
 
-    test_im_model(args.name, x, y, nodisplay=args.nodisplay, summary=True, categorical=None)
+    test_im_model(args.name, np.array(x), np.array(y), 
+        nodisplay=args.nodisplay, summary=True, categorical=None)
