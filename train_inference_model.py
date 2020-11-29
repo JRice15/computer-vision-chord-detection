@@ -28,7 +28,7 @@ from sklearn.model_selection import train_test_split
 from src.cv_helpers import *
 from src.models import fret_accuracy, make_inference_model, MyConv1DTranspose
 from src.save_stats import save_history
-from src.load_data import load_data
+from src.load_data import load_all_data
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--name",required=True)
@@ -66,7 +66,11 @@ config = TrainConfig()
 load data
 """
 
-ytrain, yval, ytest = load_data(not args.nodisplay, args.test, y_only=True)
+ytrain, yval, _ = load_all_data("data/inference_model_train", num_splits=1,
+    display=(not args.nodisplay), do_test=args.test, y_only=True, no_transitions=False)
+
+ytest, _, _ = load_all_data("data/inference_model_test", num_splits=0,
+    display=(not args.nodisplay), do_test=args.test, y_only=True, no_transitions=False)
 
 class PredLoader():
 
@@ -74,15 +78,17 @@ class PredLoader():
         self.name = name
         # we delay model and data loading until we need it, cuz its pretty big
         self.img_model = None
-        self.data = None
+        self.train_data = None
+        self.val_data = None
+        self.test_data = None
 
     def get_data_by_type(self, typ):
         if typ == "train":
-            return self.data[0]
+            return self.train_data
         elif typ == "val":
-            return self.data[1]
+            return self.val_data
         elif typ == "test":
-            return self.data[2]
+            return self.test_data
         else:
             raise ValueError("bad load type")
 
@@ -100,9 +106,15 @@ class PredLoader():
         if self.img_model is None:
 
             print("Loading video data")
-            data = load_data(not args.nodisplay, args.test)
-            xtrain, xval, xtest, ytrain, yval, ytest = data
-            self.data = (xtrain, xval, xtest)
+            data = load_all_data("data/inference_model_train", num_splits=1,
+                        display=(not args.nodisplay), do_test=args.test, no_transitions=False)
+            xtrain, xval, _, ytrain, yval, _ = data
+            self.train_data = xtrain
+            self.val_data = xval
+            data = load_all_data("data/inference_model_test", num_splits=0,
+                        display=(not args.nodisplay), do_test=args.test, no_transitions=False)  
+            xtest, _, _, ytest, _, _ = data
+            self.test_data = xtest
 
             print("Loading image model...")
             objs = {"accuracy": fret_accuracy()}
@@ -126,7 +138,7 @@ xpredtest = loader.load("test")
 
 if len(xpredtrain) != len(ytrain) or len(xpredval) != len(yval) or \
         len(xpredtest) != len(ytest):
-    raise ValueError("Loaded predictions don't match y data. Run again with '--repredict'")
+    raise ValueError("Loaded predictions don't match target y data. Run again with '--repredict'")
 
 print(len(xpredtrain), "training,", len(xpredval), "validation,", len(xpredtest), "testing preds")
 

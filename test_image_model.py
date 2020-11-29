@@ -38,6 +38,7 @@ def test_im_model(name, xtest, ytest, xtrain=None, ytrain=None, nodisplay=False,
     testing
     """
     print("Evaluating on test set")
+    print(len(xtest), "testing images")
     results = model.evaluate(xtest, ytest, verbose=1)
     with open("stats/"+name+"/stats.txt", "a") as f:
         f.write("\nTest results:\n")
@@ -80,14 +81,13 @@ def test_im_model(name, xtest, ytest, xtrain=None, ytrain=None, nodisplay=False,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--name",required=True,help="name of model to load")
-    parser.add_argument("--file",required=True,help="path to vid file (npy file should be in the same directory, and have the same name other than the extension")
     parser.add_argument("--nodisplay",action="store_true")
     parser.usage = parser.format_help()
     args = parser.parse_args()
 
-    directory, file, ext = split_path(args.file)
-    yfile = directory + "/" + file + ".npy"
-    x, y = load_one(args.file, yfile, not args.nodisplay)
+    data = load_all_data("data/inference_model_train", num_splits=0, 
+            display=(not args.nodisplay))
+    xtest, _, _, ytest, _, _ = data
 
-    test_im_model(args.name, np.array(x), np.array(y), 
+    test_im_model(args.name, xtest, ytest, 
         nodisplay=args.nodisplay, summary=True, categorical=None)

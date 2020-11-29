@@ -15,22 +15,28 @@ def ok_file(filename):
 def str_to_chord(s):
     return np.array(list(s), dtype=int)
 
-def get_all_data_names():
+def get_all_data_names(dirc):
+    """
+    find all files in the <dirc> directory which have a pair of video and .npy files
+    """
     xnames = []
     ynames = []
 
     # mapping name to extension
     found_exts = {}
 
+    if dirc[-1] != "/":
+        dirc += "/"
+
     # find which paths to load, by matching npy files with video files
-    for filename in os.listdir("data"):
+    for filename in os.listdir(dirc):
         if ok_file(filename):
             _, name, ext = split_path(filename)
             if ext == ".npy":
                 if name in found_exts:
                     if found_exts[name] != ".npy":
-                        xnames.append("data/" + name + found_exts[name])
-                        ynames.append("data/" + filename)
+                        xnames.append(dirc + name + found_exts[name])
+                        ynames.append(dirc + filename)
                     else:
                         raise ValueError("Multiple .npy with name '" + filename + "'")
                 else:
@@ -38,8 +44,8 @@ def get_all_data_names():
             elif ext in (".mov", ".mp4"):
                 if name in found_exts:
                     if found_exts[name] == ".npy":
-                        xnames.append("data/" + filename)
-                        ynames.append("data/" + name + found_exts[name])
+                        xnames.append(dirc + filename)
+                        ynames.append(dirc + name + found_exts[name])
                     else:
                         raise ValueError("Multiple vid with name '" + filename + "'")
                 else:
@@ -51,6 +57,9 @@ def get_all_data_names():
 
 
 def load_raw_files(xnames, ynames, do_test=False, display=False, y_only=False):
+    """
+    load and preprocess each video
+    """
     # y is list of arrays, each array is a chord map [ [frame index, chord str], ... ]
     yraw = []
     # x is a list of arrays, each array is a video, with shape (numframes, x, y, 3)
@@ -69,6 +78,11 @@ def load_raw_files(xnames, ynames, do_test=False, display=False, y_only=False):
     return xraw, yraw
 
 def expand_chords(xraw, yraw, no_transitions=False):
+    """
+    the yraw just maps indexes into the video to chord changes; we have to expand
+    it to be the same length as x. Also, can cut out the transitions between chords
+    with the no_transitions flag
+    """
     xs = []
     ys = []
 
@@ -96,7 +110,7 @@ def expand_chords(xraw, yraw, no_transitions=False):
                 chord_len = len(xraw[i]) - int(yraw[i][y_ind_curr][0])
             # only keep frames solidly in the middle of a chord (no transitions)
             pos_in_chord = vid_ind - vid_ind_curr
-            if (not no_transitions) or not ((pos_in_chord / chord_len < 0.2) or (pos_in_chord / chord_len > 0.8)):
+            if (not no_transitions) or not ((pos_in_chord / chord_len < 0.15) or (pos_in_chord / chord_len > 0.85)):
                 thisy.append(chord)
                 thisx.append(xraw[i][vid_ind])
             vid_ind += 1
@@ -116,7 +130,7 @@ def expand_chords(xraw, yraw, no_transitions=False):
 
 def preprocess_vid(vid, display=False):
     """
-    height, width: size
+    resizing to a common shape
     """
     IM_HEIGHT = 108
     IM_WIDTH = 540
@@ -126,13 +140,27 @@ def preprocess_vid(vid, display=False):
     return vid
 
 
-def train_val_test(x, split=0.15):
+def train_val_test(x, split=0.15, num_splits=2):
+    """
+    make train/val/test split
+    """
     length = len(x)
-    testsplit = -int(split * length)
-    valsplit = -int(split * (length + testsplit)) + testsplit
-    xtest = x[testsplit:]
-    xval = x[valsplit:testsplit]
-    xtrain = x[:valsplit]
+    split1 = -int(split * length)
+    split2 = -int(split * (length + split1)) + split1
+    xtrain = None
+    xval = []
+    xtest = []
+    if num_splits == 0:
+        xtrain = x
+    elif num_splits == 1:
+        xtrain = x[:split1]
+        xval = x[split1:]
+    elif num_splits == 2:
+        xtrain = x[:split2]
+        xval = x[split2:split1]
+        xtest = x[split1:]
+    else:
+        raise ValueError("bad numsplits: {}".format(num_splits))
     return xtrain, xval, xtest
     
 
@@ -151,9 +179,11 @@ def load_one(xname, yname, display=False, y_only=False, no_transitions=False):
     return x, y
 
 
-def load_all_data(display=False, do_test=False, y_only=False, no_transitions=True):
+def load_all_data(dirc, num_splits=2, display=False, do_test=False, y_only=False, no_transitions=True):
     """
     args:
+        dirc: directory to load from
+        num_splits: number of data splits (0 == train only, 1 == train/test, 2 == train/val/test)
         display: whether to show some example ims while loading
         do_test: whether to only load a test portion of the data
         y_only: whether only the ydata is needed
@@ -164,11 +194,10 @@ def load_all_data(display=False, do_test=False, y_only=False, no_transitions=Tru
         else:
             xtrain, xval, xtest, ytrain, yval, ytest
     """
+    print("Loading from", dirc)
 
-    xnames, ynames = get_all_data_names()
-
+    xnames, ynames = get_all_data_names(dirc)
     xraw, yraw = load_raw_files(xnames, ynames, do_test=do_test, display=display, y_only=y_only)
-
     xs, ys = expand_chords(xraw, yraw, no_transitions=no_transitions)
 
     # free up memory
@@ -185,12 +214,12 @@ def load_all_data(display=False, do_test=False, y_only=False, no_transitions=Tru
     ytrain, yval, ytest = [], [], []
 
     for i in range(len(xs)):
-        split = train_val_test(ys[i], split=0.15)
+        split = train_val_test(ys[i], split=0.15, num_splits=num_splits)
         ytrain += split[0]
         yval += split[1]
         ytest += split[2]
         if not y_only:
-            split = train_val_test(xs[i], split=0.15)
+            split = train_val_test(xs[i], split=0.15, num_splits=num_splits)
             xtrain += split[0]
             xval += split[1]
             xtest += split[2]

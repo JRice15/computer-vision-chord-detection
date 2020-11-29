@@ -66,16 +66,19 @@ config = TrainConfig(**config_dict)
 
 """
 load data
+
+train data is loaded from data/image_model_train, while test data is from data/inference_model_train
 """
-data = load_all_data(not args.nodisplay, args.test)
-xtrain, xval, xtest, ytrain, yval, ytest = data
+data = load_all_data("data/image_model_train", num_splits=1, 
+            display=(not args.nodisplay), do_test=args.test)
+xtrain, xval, _, ytrain, yval, _ = data
 
 # shuffle train set
 shuffle_inds = np.random.permutation(len(xtrain))
 xtrain = xtrain[shuffle_inds]
 ytrain = ytrain[shuffle_inds]
 
-print(len(xtrain), "training images,", len(xval), "validation,", len(xtest), "test")
+print(len(xtrain), "training images,", len(xval), "validation,")
 
 img_shape = xtrain[0].shape
 
@@ -161,6 +164,13 @@ step = max(1, len(H.history['loss']) // 6)
 save_history(H, args.name, end-start, config, marker_step=step)
 
 
-# run testing
+"""
+testing
+"""
+
+data = load_all_data("data/inference_model_train", num_splits=0, 
+            display=(not args.nodisplay), do_test=args.test)
+xtest, _, _, ytest, _, _ = data
+
 test_im_model(args.name, xtest, ytest, xtrain=xtrain, ytrain=ytrain, nodisplay=args.nodisplay, 
     summary=False, categorical=categorical)
