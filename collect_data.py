@@ -8,7 +8,7 @@ import pandas as pd
 import multiprocessing
 
 cv = cv2
-from cv_helpers import *
+from src.cv_helpers import *
 
 DONE_FLAG = "DONE"
 
@@ -49,29 +49,23 @@ def prep_capture(cap):
     print("\nStarting pre-preparation countdown. Make sure the neck of the " 
         "guitar is entirely in the frame, and then make sure you can view the terminal")
 
-    print("Press Return to continue", end=" ")
-    input()
+    print("Do a keyboard interrupt (CTRL-C) to continue")
 
-    start = time.time()
-    def elapsed():
-        return time.time() - start
+    try:
+        while True:
+            # Capture frame-by-frame
+            ok, frame = cap.read()
+            if not ok:
+                print("frame failed, retrying...")
+                continue
 
-    preprep_secs = 10
-    countdown = 0
-    while elapsed() < preprep_secs:
-        # Capture frame-by-frame
-        ok, frame = cap.read()
-        if not ok:
-            print("frame failed, retrying...")
-            continue
+            # Display the resulting frame
+            cv2.imshow('frame',frame)
+            cv.waitKey(1)
 
-        # Display the resulting frame
-        cv2.imshow('frame',frame)
-        cv.waitKey(1)
-
-        if elapsed() > countdown:
-            print(preprep_secs - countdown)
-            countdown += 1  
+    except KeyboardInterrupt:
+        print("Starting...")
+        return
 
 # thanks https://stackoverflow.com/questions/842557/how-to-prevent-a-block-of-code-from-being-interrupted-by-keyboardinterrupt-in-py
 import signal

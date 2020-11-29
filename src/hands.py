@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import mediapipe as mp
 import numpy as np
 
-from cv_helpers import *
+from src.cv_helpers import *
 
 
 def detect_hands(vid, show_result=True):

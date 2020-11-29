@@ -25,10 +25,10 @@ from keras.models import Model
 from keras.optimizers import Adam
 from sklearn.model_selection import train_test_split
 
-from cv_helpers import *
-from models import fret_accuracy, make_inference_model, MyConv1DTranspose
-from save_stats import save_history
-from data.load_data import load_data
+from src.cv_helpers import *
+from src.models import fret_accuracy, make_inference_model, MyConv1DTranspose
+from src.save_stats import save_history
+from src.load_data import load_data
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--name",required=True)

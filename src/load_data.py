@@ -1,6 +1,6 @@
 import numpy as np
 import os
-from cv_helpers import *
+from src.cv_helpers import *
 
 
 def ok_file(filename):

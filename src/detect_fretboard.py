@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
-from cv_helpers import *
-from hands import detect_hands
+from src.cv_helpers import *
+from src.hands import detect_hands
 
 print("Your openCV version:", cv.__version__)
 print("It might not work if it isnt 4.5.x")

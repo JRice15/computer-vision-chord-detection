@@ -7,4 +7,7 @@
 * process_data.py:
     * this runs `detect_fretboard.py` on the `raw_data`, and saving the fretboard videos to `data`. It skips data that has already been run, unless you use the
     `--overwrite` flag
-
+* train_image_model.py:
+    * trains model to learn fret placements from individual frames of video. This model is pretty big, and should be run on a GPU
+* test_image_model.py (optional):
+    * evaluate 

@@ -3,8 +3,8 @@ import sys
 import argparse
 import traceback
 
-import detect_fretboard
-from cv_helpers import *
+from src import detect_fretboard
+from src.cv_helpers import *
 
 
 parser = argparse.ArgumentParser()
