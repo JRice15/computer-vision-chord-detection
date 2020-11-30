@@ -3,6 +3,7 @@ import math
 import os
 import sys
 import time
+import sys
 
 import cv2
 cv = cv2
@@ -10,6 +11,7 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
+sys.path.append(".") # if running from parent dir
 from src.cv_helpers import *
 from src.hands import detect_hands
 
@@ -53,6 +55,21 @@ def edge_process(vid, edge_threshold=70, show_result=False):
 
     return edges
 
+def draw_lines(lines, frame):
+    """
+    helper to draw a set of lines on a frame
+    """
+    for i in range(len(lines)):
+        rho = lines[i][0][0]
+        theta = lines[i][0][1]
+        a = math.cos(theta)
+        b = math.sin(theta)
+        x0 = a * rho
+        y0 = b * rho
+        pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
+        pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
+        cv.line(frame, pt1, pt2, (255,255,255), 3, cv.LINE_AA)
+
 def find_lines(edges, orig_vid, show_result=False):
     """
     find lines from the edges
@@ -68,9 +85,7 @@ def find_lines(edges, orig_vid, show_result=False):
         """
         filter angles within 45deg of horizontal
         """
-        if (np.pi*1/4 < angle < np.pi*3/4):
-            return True
-        return False
+        return (np.pi*1/4 < angle < np.pi*3/4)
 
     def hough(im):
         lines = cv.HoughLines(im, 
@@ -78,8 +93,8 @@ def find_lines(edges, orig_vid, show_result=False):
                     theta=np.pi/180, 
                     threshold=300)
         lines = [] if lines is None else lines
-        # remove mostly vertical lines and take the first 500; they should be returned in order of confidence
-        lines = [j for j in lines if horizontal_ish(j[0][1])][:500]
+        # remove mostly vertical lines and take the first 150; they should be returned in order of confidence
+        lines = [j for j in lines if horizontal_ish(j[0][1])][:150]
         return lines
 
     lines = [hough(i) for i in edges]
@@ -118,21 +133,6 @@ def find_lines(edges, orig_vid, show_result=False):
         return vid_lines
 
     line_bundles = findparallel(lines, maxn=2)
-
-    def draw_lines(lines, frame):
-        """
-        draw a set of lines on a frame
-        """
-        for i in range(len(lines)):
-            rho = lines[i][0][0]
-            theta = lines[i][0][1]
-            a = math.cos(theta)
-            b = math.sin(theta)
-            x0 = a * rho
-            y0 = b * rho
-            pt1 = (int(x0 + 2000*(-b)), int(y0 + 2000*(a)))
-            pt2 = (int(x0 - 2000*(-b)), int(y0 - 2000*(a)))
-            cv.line(frame, pt1, pt2, (255,255,255), 3, cv.LINE_AA)
 
     if show_result:
         orig_vid = [np.copy(i) for i in orig_vid]
@@ -179,8 +179,7 @@ def find_contours(linesvid, vid, show_result=False):
         cnt = max(contours, key=cv.contourArea)
         # find its (potentially nonvertical) bounding rect
         rect = cv2.minAreaRect(cnt)
-        box = cv.boxPoints(rect)
-        box = np.int16(box)
+        box = cv.boxPoints(rect).astype(int)
         if show_result:
             im = boxes_vid[i]
             cv2.drawContours(im,[box],0,(0,0,255),2)
@@ -245,8 +244,7 @@ def smooth_bounding_boxes(boxes, orig_vid, show_result=True):
         #     selection = np.array(newboxes).T
             
         # average the rest
-        newbox = np.mean(selection, axis=0)
-        newbox = np.int0(newbox)
+        newbox = np.mean(selection, axis=0).astype(int)
         smoothed_boxes.append(newbox)
         if show_result:
             cv2.drawContours(boxes_vid[i],[newbox],0,(0,0,255),2)
@@ -257,34 +255,29 @@ def smooth_bounding_boxes(boxes, orig_vid, show_result=True):
     return smoothed_boxes
 
 
-def smooth_lines_angles(lines, show_result=False):
+def angles_from_boxes(boxes, show_result=False):
     """
-    smooth line angles
+    get approx rotation angel from smoothed bounding boxes
     """
-    print("smoothing lines")
+    print("getting rotation angles")
 
-    # span is number of frames on each side to average the bounding boxes of
-    span = 3
-    smooth_angles = []
+    print(boxes[0])
 
-    for i, line in enumerate(lines):
-        # get a selection of 2*span+1 consecutive boxes, and repeat some when at the edges of the video
-        top = i + span + 1
-        bottom = i-span
-        if bottom < 0:
-            bottom = 0
-        selection = lines[bottom:top]
-        if i < span:
-            selection += lines[:(span-i)]
-        elif i >= (len(lines) - span):
-            i2 = len(lines) - i - 1
-            selection += lines[-(span - i2):]
+    angles = []
+    for box in boxes:
 
-        selection_angles = [np.mean([l[0][1] for l in frame]) for frame in selection]
-        selection_angles = np.mean(selection_angles)
-        smooth_angles.append(selection_angles)
+        tl, tr, br, bl = box
+        topangle = -np.arctan2(*(tr - tl)) + np.pi
+        bottangle = -np.arctan2(*(br - bl)) + np.pi
+        angle = (topangle + bottangle) / 2
+
+        angles.append(angle)
+
+        # im = np.zeros((600, 1400, 3))
+        # draw_lines([[[300, angle]]], im)
+        # showim(im)
     
-    return smooth_angles
+    return angles
 
 
 def rotate_frames(boxes, angles, vid, show_result=False):
@@ -324,17 +317,11 @@ def rotate_frames(boxes, angles, vid, show_result=False):
     for i, frame in enumerate(vid):
         radians = angles[i] - (np.pi * 1/2)
         degrees = np.degrees(radians)
-        # mask = np.zeros(frame.shape)
-        # box = np.vstack(rotate_points(boxes[i], center, -radians)).T
-        # print(box)
-        # cv2.drawContours(mask, [box], 0, (255,255,255), -1)
-        # cv2.drawContours(mask, [boxes[i]], 0, (255,255,255), -1)
+        # draw_lines([[[300, radians + (np.pi * 1/2)]]], frame)
 
         # showim(mask)
         rot_frame = rotate_image(frame, degrees)
         rotated_vid.append(rot_frame)
-        # rot_mask = rotate_image(mask, degrees)
-        # showim(rot_frame)
 
         # ys,xs,z = np.nonzero(rot_mask)
         # if len(np.squeeze(y)) == 0:
@@ -348,7 +335,7 @@ def rotate_frames(boxes, angles, vid, show_result=False):
         bounds = (topy, bottomy+1)
         rot_bounds.append(bounds)
         # rot_frame = rot_frame[topy:bottomy+1, topx:bottomx+1]
-        # TODO extend the bottom, since it tends to miss the smaller strings more often?
+        # NOTE extend the bottom, since it tends to miss the smaller strings more often?
 
     if show_result:
         showvid(rotated_vid, name="fretboard", ms=200)
@@ -773,13 +760,13 @@ def main(**kwargs):
         timer()
         linesvid, lines = find_lines(edges, batch, show_result=True and args.show)
         timer()
-        boxes = find_contours(linesvid, batch, show_result=False and args.show)
+        boxes = find_contours(linesvid, batch, show_result=True and args.show)
         timer()
-        boxes = smooth_bounding_boxes(boxes, batch, show_result=False and args.show)
+        boxes = smooth_bounding_boxes(boxes, batch, show_result=True and args.show)
         timer()
-        angles = smooth_lines_angles(lines, show_result=False)
+        angles = angles_from_boxes(boxes, show_result=True)
         timer()
-        rotated_vid, fretboard_bounds = rotate_frames(boxes, angles, batch, show_result=False and args.show)
+        rotated_vid, fretboard_bounds = rotate_frames(boxes, angles, batch, show_result=True and args.show)
         full_rotated += rotated_vid
         full_bounds += fretboard_bounds
         timer()

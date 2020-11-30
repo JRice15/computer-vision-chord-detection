@@ -201,6 +201,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--name",required=True,help="name to give to this file. include things like what type of guitar, and any other relevant info")
     parser.add_argument("--file",default="chords.xlsx",help="chords excel file")
+    parser.usage = parser.format_help()
     args = parser.parse_args()
 
     chords = read_chordfile(args)
