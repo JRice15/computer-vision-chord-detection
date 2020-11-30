@@ -86,7 +86,6 @@ img_shape = xtrain[0].shape
 make model
 """
 
-
 # get the loss function
 lossname = config.loss.lower()
 print("Using loss", lossname)
@@ -118,10 +117,25 @@ model.compile(
     metrics=metrics,
 )
 
+output_shape = model.get_output_shape_at(-1)[:1] # except batch size
 
 """
 train model
 """
+
+def train_gen():
+    bs = config.batchsize
+    length = len(xtrain)
+    while True:
+        for i in range(0, length, bs):
+            x = xtrain[i:i+bs]
+            y = ytrain[i:i+bs]
+            overflow = i + bs - length
+            if overflow > 0:
+                x = np.concatenate([x, xtrain[0:overflow]], axis=0)
+                y = np.concatenate([y, ytrain[0:overflow]], axis=0)
+            yield x,y
+
 
 def lr_sched(epoch, lr=None):
     if lr is None:
@@ -147,12 +161,12 @@ callbacks = [
 start = time.time()
 try:
     H = model.fit(
-        xtrain,
-        ytrain,
+        train_gen(),
         validation_data=(xval, yval),
         batch_size=config.batchsize,
         epochs=config.epochs,
         verbose=1,
+        steps_per_epoch=10_000,
         callbacks=callbacks,
     )
 except KeyboardInterrupt:
@@ -163,6 +177,7 @@ end = time.time()
 step = max(1, len(H.history['loss']) // 6)
 save_history(H, args.name, end-start, config, marker_step=step)
 
+del xval, yval
 
 """
 testing
