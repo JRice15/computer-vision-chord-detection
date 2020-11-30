@@ -261,8 +261,6 @@ def angles_from_boxes(boxes, show_result=False):
     """
     print("getting rotation angles")
 
-    print(boxes[0])
-
     angles = []
     for box in boxes:
 

@@ -12,7 +12,9 @@ from src.cv_helpers import *
 
 DONE_FLAG = "DONE"
 
-
+os.makedirs("data/image_model_train", exist_ok=True)
+os.makedirs("data/inference_model_train", exist_ok=True)
+os.makedirs("data/inference_model_test", exist_ok=True)
 
 def chord_repr(c, max_len):
     return "{:{max_len}} {}".format(*c, max_len=max_len)

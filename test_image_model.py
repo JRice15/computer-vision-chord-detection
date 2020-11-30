@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 
 from src.cv_helpers import *
 from src.models import make_model, fret_accuracy
-from src.load_data import load_one
+from src.load_data import load_one, load_all_data
 
 def test_im_model(name, xtest, ytest, xtrain=None, ytrain=None, nodisplay=False, 
         summary=False, categorical=False):

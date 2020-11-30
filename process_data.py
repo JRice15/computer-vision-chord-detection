@@ -1,3 +1,7 @@
+"""
+second step in the pipeline: runs detect_fretboard on the raw_data videos
+"""
+
 import os
 import sys
 import argparse
@@ -53,6 +57,7 @@ if not to_process:
 
 successes = 0
 failures = 0
+fail_names = []
 for name in to_process:
     try:
         print("\n*** Processing", name)
@@ -69,8 +74,11 @@ for name in to_process:
         traceback.print_exc()
         print("\n")
         failures += 1
+        fail_names.append(name)
     
 print()
 print(successes, "successes,", failures, "failures")
-
+print("Failed files:")
+for i in fail_names: 
+    print(i)
 
