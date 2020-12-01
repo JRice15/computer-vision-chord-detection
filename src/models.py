@@ -19,6 +19,12 @@ print("keras:", keras.__version__)
 
 MAX_FRET = 5
 
+def get_output_shape(categorical=False):
+    if categorical:
+        # if the maximum fret is 5, there are 6 options, because 0 is a possibility
+        return (6,MAX_FRET+1)
+    else:
+        return (6,)
 
 def fret_accuracy():
     """
@@ -390,20 +396,31 @@ class MyConv1DTranspose(tf.keras.layers.Layer):
         return config
 
 
-def make_inference_model(inpt_shape, categorical=True):
+def make_inference_model(inpt_shape, output_shape, categorical=True):
     """
     1d convolutional autoencoder
     """
     inpt = layers.Input(inpt_shape)
     x = inpt
 
-    if categorical:
+    if len(inpt_shape) > 2:
         inpt_length, numstrings, numfrets = inpt_shape
         depth = numstrings * numfrets
         # flatten categorical input
         x = layers.Reshape((inpt_length, depth), name="reshape1")(x)
     else:
         inpt_length, depth = inpt_shape
+    if len(output_shape) > 2:
+        inpt_length, numstrings, numfrets = output_shape
+        target_depth = numstrings * numfrets
+    else:
+        inpt_length, target_depth = inpt_shape
+    
+    if depth >= 128:
+        depth2 = depth3 = depth
+    else:
+        depth2 = 2 * depth
+        depth3 = 3 * depth
 
     ### Encoding (8x downsample)
     # kernel size and strides are format of (timesteps, number of strings)
@@ -411,28 +428,28 @@ def make_inference_model(inpt_shape, categorical=True):
             padding="same")(x)
     x = layers.BatchNormalization()(x)
     x = layers.ReLU()(x)
-    x = layers.SpatialDropout1D(0.4)(x)
+    # x = layers.SpatialDropout1D(0.4)(x)
 
-    x = layers.Conv1D(2*depth, kernel_size=7, strides=2, use_bias=False, 
+    x = layers.Conv1D(depth2, kernel_size=7, strides=2, use_bias=False, 
             padding="same")(x)
     x = layers.BatchNormalization()(x)
     x = layers.ReLU()(x)
-    x = layers.SpatialDropout1D(0.4)(x)
+    # x = layers.SpatialDropout1D(0.4)(x)
 
-    x = layers.Conv1D(3*depth, kernel_size=5, strides=2, use_bias=False, 
+    x = layers.Conv1D(depth3, kernel_size=5, strides=2, use_bias=False, 
             padding="same")(x)
     x = layers.BatchNormalization()(x)
     x = layers.ReLU()(x)
-    x = layers.SpatialDropout1D(0.4)(x)
+    # x = layers.SpatialDropout1D(0.4)(x)
 
     ### Middle
-    x = layers.Conv1D(3*depth, kernel_size=5, strides=1, use_bias=False, 
+    x = layers.Conv1D(depth3, kernel_size=5, strides=1, use_bias=False, 
             padding="same")(x)
     x = layers.BatchNormalization()(x)
     x = layers.ReLU()(x)
-    x = layers.SpatialDropout1D(0.4)(x)
+    # x = layers.SpatialDropout1D(0.4)(x)
     # one LSTM goes back to front, the other front to back
-    x = layers.LSTM(3*depth, return_sequences=True, 
+    x = layers.LSTM(depth3, return_sequences=True, 
             # go_backwards=True, 
             # dropout=0.4, 
             name="lstm1")(x)
@@ -446,10 +463,15 @@ def make_inference_model(inpt_shape, categorical=True):
 
     ### Decoding
     # upsample 16x with convolution to full length
-    x = MyConv1DTranspose(2*depth, kernel_size=5, strides=2, padding="same")(x)
-    x = layers.ReLU()(x)
-    x = Dense(depth)(x)
-    # x = layers.SpatialDropout1D(0.4)(x)
+    x = MyConv1DTranspose(depth2, kernel_size=5, strides=2, padding="same")(x)
+    # get to proper depth
+    first = True
+    while first or (x.shape[-1] > target_depth):
+        first = False
+        new_depth = max(x.shape[-1] // 2, target_depth)
+        x = layers.SpatialDropout1D(0.6)(x)
+        x = layers.ReLU()(x)
+        x = Dense(new_depth)(x)
 
     # x = MyConv1DTranspose(depth, kernel_size=5, strides=4, padding="same")(x)
     # x = layers.SpatialDropout1D(0.4)(x)
@@ -457,8 +479,10 @@ def make_inference_model(inpt_shape, categorical=True):
     #  transition by 4 frames is fine
     x = layers.UpSampling1D(4)(x)
 
+    if x.shape != output_shape:
+        x = layers.Reshape(output_shape, name="reshape2")(x)
+
     if categorical:
-        x = layers.Reshape(inpt_shape, name="reshape2")(x)
         x = layers.Softmax(axis=-1)(x)
     else:
         x = layers.Activation('sigmoid')(x)

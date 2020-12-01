@@ -225,9 +225,5 @@ del xval, yval
 testing
 """
 
-data = load_all_data("data/inference_model_train", num_splits=0,
-            display=(not args.nodisplay), do_test=args.test)
-xtest, _, _, ytest, _, _ = data
-
-test_im_model(args.name, xtest, ytest, xtrain_short=xtrain_short, 
+test_im_model(args.name, xtrain_short=xtrain_short, do_test=args.test,
     ytrain_short=ytrain_short, nodisplay=args.nodisplay, summary=False)

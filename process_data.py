@@ -28,7 +28,8 @@ get filenames to process
 """
 
 raw = [i for i in os.listdir("raw_data/") if not i.startswith('.')]
-data = [i for i in os.listdir("data/") if not i.startswith('.')]
+data = os.listdir("data/image_model_train") + os.listdir("data/inference_model_train") + os.listdir("data/inference_model_test")
+data = [i for i in data if not i.startswith('.')]
 
 if args.overwrite:
     to_process = raw
@@ -54,6 +55,10 @@ process them
 if not to_process:
     print("no new raw_data to process...")
     exit()
+
+print("Going to process:")
+for i in to_process:
+    print(" ", i)
 
 successes = 0
 failures = 0

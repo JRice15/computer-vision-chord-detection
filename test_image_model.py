@@ -13,12 +13,12 @@ from src.cv_helpers import *
 from src.models import make_model, fret_accuracy
 from src.load_data import load_one, load_all_data
 
-def test_im_model(name, xtest, ytest, xtrain_short=None, ytrain_short=None, nodisplay=False, 
-        summary=False):
+def test_im_model(name, xtrain_short=None, ytrain_short=None, nodisplay=False, 
+        summary=False, do_test=False):
     """
     test the image model on test set data
     args:
-        xtest, ytest: main test vids
+        name: name of model to load
         xtrain_short, ytrain_short: shuffled short selections from xtrain
         summary: whether to show summary
     """
@@ -41,14 +41,31 @@ def test_im_model(name, xtest, ytest, xtrain_short=None, ytrain_short=None, nodi
     """
     testing
     """
-    print("Evaluating on test set")
-    print(len(xtest), "testing images")
-    results = model.evaluate(xtest, ytest, verbose=1)
-    with open("stats/"+name+"/stats.txt", "a") as f:
-        f.write("\nTest results:\n")
-        for i,metric in enumerate(model.metrics_names):
-            print(" ", metric+":", results[i])
-            f.write(metric+": "+str(results[i])+"\n")
+    # data = load_all_data("data/inference_model_train", num_splits=0, 
+    #             display=(not args.nodisplay), do_test=do_test)
+    # xtest, _, _, ytest, _, _ = data
+
+    # print("Evaluating on test set w/ no transitions")
+    # print(len(xtest), "testing images")
+    # results = model.evaluate(xtest, ytest, verbose=1)
+    # with open("stats/"+name+"/stats.txt", "a") as f:
+    #     f.write("\nTest results (no transitions):\n")
+    #     for i,metric in enumerate(model.metrics_names):
+    #         print(" ", metric+":", results[i])
+    #         f.write(metric+": "+str(results[i])+"\n")
+
+    data = load_all_data("data/inference_model_train", num_splits=0, 
+                display=(not args.nodisplay), do_test=do_test, no_transitions=False)
+    xtest, _, _, ytest, _, _ = data
+
+    # print("Evaluating on test set w/ transitions")
+    # print(len(xtest), "testing images")
+    # results = model.evaluate(xtest, ytest, verbose=1)
+    # with open("stats/"+name+"/stats.txt", "a") as f:
+    #     f.write("\nTest results (with transitions):\n")
+    #     for i,metric in enumerate(model.metrics_names):
+    #         print(" ", metric+":", results[i])
+    #         f.write(metric+": "+str(results[i])+"\n")
 
     scaleup = 2.0
 
@@ -67,12 +84,13 @@ def test_im_model(name, xtest, ytest, xtrain_short=None, ytrain_short=None, nodi
 
     # on test set
     print("Generating video on test set predictions")
-    testpreds = model.predict(xtest, verbose=1)
+    numframes = 1000
+    testpreds = model.predict(xtest[:numframes], verbose=1)
 
     vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
-                interpolation=cv.INTER_LINEAR) for i in xtest]
+                interpolation=cv.INTER_LINEAR) for i in xtest[:numframes]]
 
-    annotate_vid(vid, testpreds, ytest, categorical)
+    annotate_vid(vid, testpreds, ytest[:numframes], categorical)
     if not nodisplay:
         showvid(vid, name="test set", ms=35)
     writevid(vid, "stats/"+name+"/results_visualization_testset")
@@ -86,9 +104,4 @@ if __name__ == "__main__":
     parser.usage = parser.format_help()
     args = parser.parse_args()
 
-    data = load_all_data("data/inference_model_train", num_splits=0, split_amount=0.1,
-            display=(not args.nodisplay))
-    xtest, _, _, ytest, _, _ = data
-
-    test_im_model(args.name, xtest, ytest, 
-        nodisplay=args.nodisplay, summary=True)
+    test_im_model(args.name, nodisplay=args.nodisplay, summary=True)
