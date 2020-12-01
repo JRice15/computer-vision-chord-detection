@@ -58,7 +58,7 @@ def test_im_model(name, xtest, ytest, xtrain_short=None, ytrain_short=None, nodi
         trainpreds = model.predict(xtrain_short, verbose=1)
 
         vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
-                    interpolation=cv.INTER_LINEAR) for i in train_short]
+                    interpolation=cv.INTER_LINEAR) for i in xtrain_short]
 
         annotate_vid(vid, trainpreds, ytrain_short, categorical)
         if not nodisplay:
