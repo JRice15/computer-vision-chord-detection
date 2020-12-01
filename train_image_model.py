@@ -82,8 +82,8 @@ ytrain = ytrain[shuffle_inds]
 print(len(xtrain), "training images,", len(xval), "validation,")
 
 # for testing later
-xtrain_short = xtrain[:20]
-ytrain_short = ytrain[:20]
+xtrain_short = xtrain[:20].copy()
+ytrain_short = ytrain[:20].copy()
 
 img_shape = xtrain[0].shape
 
@@ -121,6 +121,8 @@ if len(x) > 0:
 
 # we can now delete the training data to free memory
 del xtrain, ytrain
+import gc
+gc.collect()
 
 """
 make model
@@ -173,7 +175,7 @@ def train_gen():
             Y = np.load(DATA_TEMP_DIR+"y/"+path)
             assert len(X) == len(Y)
             for i in range(len(X)):
-                showim(X[i][0])
+                #showim(X[i][0])
                 yield X[i], Y[i]
 
 
@@ -206,7 +208,7 @@ try:
         batch_size=config.batchsize,
         epochs=config.epochs,
         verbose=1,
-        steps_per_epoch=10_000,
+        steps_per_epoch=int(6400/config.batchsize), # 6400 examples each epoch, which is 200 batches with a 32 batchsize
         callbacks=callbacks,
     )
 except KeyboardInterrupt:
