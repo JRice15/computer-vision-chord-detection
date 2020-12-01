@@ -11,6 +11,7 @@ import json
 import os
 import time
 import pprint
+import shutil
 
 import keras
 import numpy as np
@@ -69,7 +70,7 @@ load data
 
 train data is loaded from data/image_model_train, while test data is from data/inference_model_train
 """
-data = load_all_data("data/image_model_train", num_splits=1, 
+data = load_all_data("data/image_model_train", num_splits=1, split_amount=0.1,
             display=(not args.nodisplay), do_test=args.test)
 xtrain, xval, _, ytrain, yval, _ = data
 
@@ -80,7 +81,46 @@ ytrain = ytrain[shuffle_inds]
 
 print(len(xtrain), "training images,", len(xval), "validation,")
 
+# for testing later
+xtrain_short = xtrain[:20]
+ytrain_short = ytrain[:20]
+
 img_shape = xtrain[0].shape
+
+"""
+store data in sets of batches inside the temp folder, cuz its too big to have loaded all at once
+"""
+
+DATA_TEMP_DIR = "data/.temp/"
+
+print("Preparing training batches in", DATA_TEMP_DIR)
+try:
+    shutil.rmtree(DATA_TEMP_DIR)
+except FileNotFoundError:
+    pass
+
+os.makedirs(DATA_TEMP_DIR+"x/")
+os.makedirs(DATA_TEMP_DIR+"y/")
+
+x = []
+y = []
+for i in range(0, len(xtrain)-config.batchsize, config.batchsize):
+    x.append( xtrain[i:i+config.batchsize] )
+    y.append( ytrain[i:i+config.batchsize] )
+    # save batches in sets of 50
+    if len(x) >= 50:
+        np.save(DATA_TEMP_DIR+"x/batches_"+str(i), x)
+        np.save(DATA_TEMP_DIR+"y/batches_"+str(i), y)
+        x = []
+        y = []
+
+if len(x) > 0:
+    np.save(DATA_TEMP_DIR+"x/batches_"+str(i), x)
+    np.save(DATA_TEMP_DIR+"y/batches_"+str(i), y)
+    del x, y
+
+# we can now delete the training data to free memory
+del xtrain, ytrain
 
 """
 make model
@@ -124,17 +164,17 @@ train model
 """
 
 def train_gen():
-    bs = config.batchsize
-    length = len(xtrain)
+    """
+    load batched data from temp
+    """
     while True:
-        for i in range(0, length, bs):
-            x = xtrain[i:i+bs]
-            y = ytrain[i:i+bs]
-            overflow = i + bs - length
-            if overflow > 0:
-                x = np.concatenate([x, xtrain[0:overflow]], axis=0)
-                y = np.concatenate([y, ytrain[0:overflow]], axis=0)
-            yield x,y
+        for path in os.listdir(DATA_TEMP_DIR+"x/"):
+            X = np.load(DATA_TEMP_DIR+"x/"+path)
+            Y = np.load(DATA_TEMP_DIR+"y/"+path)
+            assert len(X) == len(Y)
+            for i in range(len(X)):
+                showim(X[i][0])
+                yield X[i], Y[i]
 
 
 def lr_sched(epoch, lr=None):
@@ -183,9 +223,9 @@ del xval, yval
 testing
 """
 
-data = load_all_data("data/inference_model_train", num_splits=0, 
+data = load_all_data("data/inference_model_train", num_splits=0,
             display=(not args.nodisplay), do_test=args.test)
 xtest, _, _, ytest, _, _ = data
 
-test_im_model(args.name, xtest, ytest, xtrain=xtrain, ytrain=ytrain, nodisplay=args.nodisplay, 
-    summary=False, categorical=categorical)
+test_im_model(args.name, xtest, ytest, xtrain_short=xtrain_short, 
+    ytrain_short=ytrain_short, nodisplay=args.nodisplay, summary=False)

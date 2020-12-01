@@ -179,11 +179,13 @@ def load_one(xname, yname, display=False, y_only=False, no_transitions=False):
     return x, y
 
 
-def load_all_data(dirc, num_splits=2, display=False, do_test=False, y_only=False, no_transitions=True):
+def load_all_data(dirc, num_splits=2, split_amount=0.1, display=False, 
+        do_test=False, y_only=False, no_transitions=True):
     """
     args:
         dirc: directory to load from
         num_splits: number of data splits (0 == train only, 1 == train/test, 2 == train/val/test)
+        split_amount: percentage [0-1] to split for train/val/test
         display: whether to show some example ims while loading
         do_test: whether to only load a test portion of the data
         y_only: whether only the ydata is needed
@@ -214,12 +216,12 @@ def load_all_data(dirc, num_splits=2, display=False, do_test=False, y_only=False
     ytrain, yval, ytest = [], [], []
 
     for i in range(len(xs)):
-        split = train_val_test(ys[i], split=0.15, num_splits=num_splits)
+        split = train_val_test(ys[i], split=split_amount, num_splits=num_splits)
         ytrain += split[0]
         yval += split[1]
         ytest += split[2]
         if not y_only:
-            split = train_val_test(xs[i], split=0.15, num_splits=num_splits)
+            split = train_val_test(xs[i], split=split_amount, num_splits=num_splits)
             xtrain += split[0]
             xval += split[1]
             xtest += split[2]
