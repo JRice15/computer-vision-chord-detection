@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 
 from src.cv_helpers import *
-from src.models import make_model, fret_accuracy
+from src.image_models import make_model, fret_accuracy
 from src.load_data import load_one, load_all_data
 
 def test_im_model(name, xtrain_short=None, ytrain_short=None, nodisplay=False, 

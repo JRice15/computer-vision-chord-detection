@@ -34,7 +34,14 @@ def readvid(file, maxframes=None):
             count += 1
             if count >= maxframes:
                 break
+    cap.release()
     return vidframes
+
+def getvidlength(file):
+    cap = cv.VideoCapture(file)
+    numframes = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+    cap.release()
+    return numframes
 
 def writevid(vid, name, flipchannels=True):
     """
@@ -89,7 +96,7 @@ def annotate_vid(vid, preds, trues, categorical):
                 pred = np.argmax(preds[i][j])
             else:
                 pred = round(preds[i][j])
-            true = trues[i][j]
+            true = int(trues[i][j])
             if pred == true:
                 c = (0,255,0)
             else:

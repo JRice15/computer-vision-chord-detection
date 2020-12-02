@@ -10,30 +10,31 @@ import argparse
 import json
 import logging
 import os
-import random
 import pprint
+import random
 import time
 
 import keras
 import numpy as np
 import tensorflow as tf
 from keras import backend as K
+from keras import layers
 from keras.callbacks import (EarlyStopping, History, LearningRateScheduler,
                              ModelCheckpoint, ReduceLROnPlateau)
-from keras import layers
 from keras.models import Model
 from keras.optimizers import Adam
 
 from src.cv_helpers import *
-from src.models import fret_accuracy, make_inference_model, MyConv1DTranspose, get_output_shape
-from src.save_stats import save_history
+from src.image_models import fret_accuracy, get_output_shape
+from src.inference_models import (INPUT_LEN, MyConv1DTranspose,
+                                  group_sequences, make_inference_model)
 from src.load_data import load_all_data
 from src.load_preds import load_predictions
+from src.save_stats import save_history
 from test_inference_model import test_inference_model
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--name",required=True)
-parser.add_argument("--load",action="store_true")
 parser.add_argument("--nodisplay",action="store_true")
 parser.add_argument("--test",action="store_true",help="load a small portion of the data for a quick test run")
 parser.add_argument("--repredict",action="store_true",help="re-predict; run the imagemodel on the training data again, to generate updated predictions")
@@ -45,12 +46,12 @@ modelname = args.name + "_inference"
 class TrainConfig:
 
     def __init__(self):
-        self.epochs = 50
+        self.epochs = 100
         self.batchsize = 32
+        self.batches_per_epoch = 50
         self.lr = 0.001
-        self.lr_sched = [4, 12, 24, 36, 44]
+        self.lr_sched = [8, 25, 50, 75, 90] # [4, 12, 24, 36, 46] 
         self.lr_sched_factor = 0.2
-        self.input_length = 64
         pprint.pprint(vars(self))
     
     def __str__(self):
@@ -92,32 +93,19 @@ def train_gen():
     generate a batch of X,Y
     """
     X = np.empty((config.batchsize,)+input_shape)
-    Y = np.empty((config.batchsize,config.input_length)+ytrain[0].shape)
+    Y = np.empty((config.batchsize,INPUT_LEN)+ytrain[0].shape)
     while True:
         for i in range(config.batchsize):
-            j = np.random.randint(len(xpredtrain)-config.input_length)
+            j = np.random.randint(len(xpredtrain)-INPUT_LEN)
             flip = random.choice([True, False])
             if flip:
-                X[i] = xpredtrain[j+config.input_length:j:-1]
-                Y[i] = ytrain[j+config.input_length:j:-1]
+                X[i] = xpredtrain[j+INPUT_LEN:j:-1]
+                Y[i] = ytrain[j+INPUT_LEN:j:-1]
             else:
-                X[i] = xpredtrain[j:j+config.input_length]
-                Y[i] = ytrain[j:j+config.input_length]
-        # noise to prevent overfitting
-        X += np.random.normal(0.0, 0.10, size=X.shape)
+                X[i] = xpredtrain[j:j+INPUT_LEN]
+                Y[i] = ytrain[j:j+INPUT_LEN]
         yield X, Y
             
-def group_sequences(x, y, step=50):
-    """
-    split data into input_length sized pieces
-    """
-    inptlen = config.input_length
-    X = np.empty((len(x)//step, inptlen)+x.shape[1:])
-    Y = np.empty((len(y)//step, inptlen)+y.shape[1:])
-    for batch_ind,ind in enumerate(range(inptlen, len(x), step)):
-        X[batch_ind] = x[ind-inptlen:ind]
-        Y[batch_ind] = y[ind-inptlen:ind]
-    return X, Y
 
 xpredval, yval = group_sequences(xpredval, yval)
 xpredtest, ytest = group_sequences(xpredtest, ytest)
@@ -128,8 +116,8 @@ training
 """
 
 pred_shape = xpredtrain[0].shape
-input_shape = (config.input_length,) + pred_shape
-output_shape = (config.input_length,) + get_output_shape(categorical=categorical)
+input_shape = (INPUT_LEN,) + pred_shape
+output_shape = (INPUT_LEN,) + get_output_shape(categorical=categorical)
 print("input, output shapes:", input_shape, output_shape)
 
 model = make_inference_model(input_shape, output_shape, categorical=categorical)
@@ -147,6 +135,7 @@ model.compile(
     optimizer=Adam(config.lr),
     metrics=metrics,
 )
+
 
 """
 train model
@@ -174,7 +163,7 @@ try:
         batch_size=config.batchsize,
         epochs=config.epochs,
         verbose=1,
-        steps_per_epoch=(len(xpredtrain)//(2*config.batchsize)), # half of dataset per epoch
+        steps_per_epoch=config.batches_per_epoch,
         callbacks=callbacks,
     )
 except KeyboardInterrupt:
@@ -186,4 +175,5 @@ step = max(1, len(H.history['loss']) // 6)
 save_history(H, modelname, end-start, config, marker_step=step)
 
 
-test_inference_model(args.name, modelname, xpredtest, ytest, display=(not args.nodisplay))
+test_inference_model(args.name, modelname, display=(not args.nodisplay), 
+    noimagemodel=True, makevid=False)

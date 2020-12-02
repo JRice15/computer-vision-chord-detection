@@ -4,7 +4,8 @@ import sys
 import argparse
 sys.path.append(".")
 from src.cv_helpers import *
-from src.models import fret_accuracy, MyConv1DTranspose
+from src.image_models import fret_accuracy
+from src.inference_models import MyConv1DTranspose
 from src.load_data import load_all_data
 import keras
 from keras import Model

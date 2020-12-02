@@ -67,10 +67,19 @@ def load_raw_files(xnames, ynames, do_test=False, display=False, y_only=False):
 
     for i in range(len(xnames)):
         yraw.append(np.load(ynames[i]))
-        vid = readvid(xnames[i], maxframes=(30 if do_test else None))
-        print(len(vid), "frames")
-        vid = preprocess_vid(vid, display=display)
-        xraw.append(vid)
+        if y_only:
+            if do_test:
+                vidlen = 30
+            else:
+                vidlen = getvidlength(xnames[i])
+            # have to have an iterable of this length for expand chords to work. this is 
+            #  a pretty hacky workaround
+            xraw.append(range(vidlen))
+        else:
+            vid = readvid(xnames[i], maxframes=(30 if do_test else None))
+            print(len(vid), "frames")
+            vid = preprocess_vid(vid, display=display)
+            xraw.append(vid)
 
     if len(yraw) < 1 or (len(xraw) < 1 and not y_only):
         raise ValueError("No matching data in the 'data' directory!")
@@ -196,7 +205,7 @@ def load_all_data(dirc, num_splits=2, split_amount=0.1, display=False,
         else:
             xtrain, xval, xtest, ytrain, yval, ytest
     """
-    print("Loading from", dirc)
+    print("Loading from", dirc, "(y only)" if y_only else "")
 
     xnames, ynames = get_all_data_names(dirc)
     xraw, yraw = load_raw_files(xnames, ynames, do_test=do_test, display=display, y_only=y_only)

@@ -23,7 +23,7 @@ from keras.models import Model
 from keras.optimizers import Adam
 
 from src.cv_helpers import *
-from src.models import make_model, fret_accuracy
+from src.image_models import make_model, fret_accuracy
 from src.save_stats import save_history
 from src.load_data import load_all_data
 from test_image_model import test_im_model
