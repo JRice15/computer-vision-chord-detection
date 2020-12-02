@@ -454,7 +454,7 @@ def make_inference_model(inpt_shape, output_shape, categorical=True):
             # dropout=0.4, 
             name="lstm1")(x)
     x = layers.BatchNormalization()(x)
-    # x = layers.LSTM(3*depth, return_sequences=True, go_backwards=True, 
+    # x = layers.LSTM(depth3, return_sequences=True, go_backwards=True, 
     #         dropout=0.4, 
     #         name="lstm2")(x)
     # x = layers.BatchNormalization()(x)
@@ -465,13 +465,20 @@ def make_inference_model(inpt_shape, output_shape, categorical=True):
     # upsample 16x with convolution to full length
     x = MyConv1DTranspose(depth2, kernel_size=5, strides=2, padding="same")(x)
     # get to proper depth
-    first = True
-    while first or (x.shape[-1] > target_depth):
-        first = False
+    while x.shape[-1] > target_depth:
         new_depth = max(x.shape[-1] // 2, target_depth)
-        x = layers.SpatialDropout1D(0.6)(x)
+        x = BatchNormalization()(x)
         x = layers.ReLU()(x)
         x = Dense(new_depth)(x)
+    x = ReLU()(x)
+    x = layers.SpatialDropout1D(0.4)(x)
+
+    x = Dense(target_depth)(x)
+    x = ReLU()(x)
+    x = layers.SpatialDropout1D(0.4)(x)
+
+    x = Dense(target_depth)(x)
+    x = layers.SpatialDropout1D(0.4)(x)
 
     # x = MyConv1DTranspose(depth, kernel_size=5, strides=4, padding="same")(x)
     # x = layers.SpatialDropout1D(0.4)(x)

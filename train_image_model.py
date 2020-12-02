@@ -21,7 +21,6 @@ from keras.callbacks import (History, LearningRateScheduler, ModelCheckpoint,
                              ReduceLROnPlateau, EarlyStopping)
 from keras.models import Model
 from keras.optimizers import Adam
-from sklearn.model_selection import train_test_split
 
 from src.cv_helpers import *
 from src.models import make_model, fret_accuracy

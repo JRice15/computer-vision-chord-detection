@@ -7,7 +7,6 @@ import pprint
 import keras
 import numpy as np
 import tensorflow as tf
-from sklearn.model_selection import train_test_split
 
 from src.cv_helpers import *
 from src.models import make_model, fret_accuracy
@@ -41,31 +40,31 @@ def test_im_model(name, xtrain_short=None, ytrain_short=None, nodisplay=False,
     """
     testing
     """
-    # data = load_all_data("data/inference_model_train", num_splits=0, 
-    #             display=(not args.nodisplay), do_test=do_test)
-    # xtest, _, _, ytest, _, _ = data
+    data = load_all_data("data/inference_model_train", num_splits=0, 
+                display=(not args.nodisplay), do_test=do_test)
+    xtest, _, _, ytest, _, _ = data
 
-    # print("Evaluating on test set w/ no transitions")
-    # print(len(xtest), "testing images")
-    # results = model.evaluate(xtest, ytest, verbose=1)
-    # with open("stats/"+name+"/stats.txt", "a") as f:
-    #     f.write("\nTest results (no transitions):\n")
-    #     for i,metric in enumerate(model.metrics_names):
-    #         print(" ", metric+":", results[i])
-    #         f.write(metric+": "+str(results[i])+"\n")
+    print("Evaluating on test set w/ no transitions")
+    print(len(xtest), "testing images")
+    results = model.evaluate(xtest, ytest, verbose=1)
+    with open("stats/"+name+"/stats.txt", "a") as f:
+        f.write("\nTest results (no transitions):\n")
+        for i,metric in enumerate(model.metrics_names):
+            print(" ", metric+":", results[i])
+            f.write(metric+": "+str(results[i])+"\n")
 
     data = load_all_data("data/inference_model_train", num_splits=0, 
                 display=(not args.nodisplay), do_test=do_test, no_transitions=False)
     xtest, _, _, ytest, _, _ = data
 
-    # print("Evaluating on test set w/ transitions")
-    # print(len(xtest), "testing images")
-    # results = model.evaluate(xtest, ytest, verbose=1)
-    # with open("stats/"+name+"/stats.txt", "a") as f:
-    #     f.write("\nTest results (with transitions):\n")
-    #     for i,metric in enumerate(model.metrics_names):
-    #         print(" ", metric+":", results[i])
-    #         f.write(metric+": "+str(results[i])+"\n")
+    print("Evaluating on test set w/ transitions")
+    print(len(xtest), "testing images")
+    results = model.evaluate(xtest, ytest, verbose=1)
+    with open("stats/"+name+"/stats.txt", "a") as f:
+        f.write("\nTest results (with transitions):\n")
+        for i,metric in enumerate(model.metrics_names):
+            print(" ", metric+":", results[i])
+            f.write(metric+": "+str(results[i])+"\n")
 
     scaleup = 2.0
 

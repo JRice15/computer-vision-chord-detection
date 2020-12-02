@@ -23,7 +23,6 @@ from keras.callbacks import (EarlyStopping, History, LearningRateScheduler,
 from keras import layers
 from keras.models import Model
 from keras.optimizers import Adam
-from sklearn.model_selection import train_test_split
 
 from src.cv_helpers import *
 from src.models import fret_accuracy, make_inference_model, MyConv1DTranspose, get_output_shape
