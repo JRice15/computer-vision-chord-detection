@@ -50,7 +50,7 @@ class TrainConfig:
         self.batchsize = 32
         self.batches_per_epoch = 50
         self.lr = 0.001
-        self.lr_sched = [8, 25, 50, 75, 90] # [4, 12, 24, 36, 46] 
+        self.lr_sched = [4, 12, 24, 36, 46]  # [8, 25, 50, 75, 90]
         self.lr_sched_factor = 0.2
         pprint.pprint(vars(self))
     

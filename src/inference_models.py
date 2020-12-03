@@ -21,12 +21,11 @@ def group_sequences(x, y, step=10):
     args:
         step: step size between sequences
     """
-    inpt_len = INPUT_LEN
-    X = np.empty((len(x)//step, inpt_len)+x.shape[1:])
-    Y = np.empty((len(y)//step, inpt_len)+y.shape[1:])
-    for batch_ind,ind in enumerate(range(inpt_len, len(x), step)):
-        X[batch_ind] = x[ind-inpt_len:ind]
-        Y[batch_ind] = y[ind-inpt_len:ind]
+    X = np.empty((len(x)//step, INPUT_LEN)+x.shape[1:], dtype=x.dtype)
+    Y = np.empty((len(y)//step, INPUT_LEN)+y.shape[1:], dtype=y.dtype)
+    for batch_ind,ind in enumerate(range(INPUT_LEN, len(x), step)):
+        X[batch_ind] = x[ind-INPUT_LEN:ind]
+        Y[batch_ind] = y[ind-INPUT_LEN:ind]
     return X, Y
 
 
@@ -143,29 +142,56 @@ def v2_simple(x, depth, target_depth):
     return x
 
 def v3_sepconv(x, depth, target_depth):
-    x = layers.SpatialDropout1D(0.6)(x)
+    # x = layers.SpatialDropout1D(0.6)(x)
     # x = Bidirectional(LSTM(depth, return_sequences=True), merge_mode='concat')(x)
 
-    x = layers.SeparableConv1D(2*depth, kernel_size=5, strides=2, padding="same")(x)
+    x = layers.SeparableConv1D(2*depth, kernel_size=3, strides=1, padding="same")(x)
     x = ReLU()(x)
+    x = BatchNormalization()(x)
+    # x = layers.SpatialDropout1D(0.4)(x)
+
+    x = layers.SeparableConv1D(2*depth, kernel_size=3, strides=1, padding="same")(x)
+    x = ReLU()(x)
+    # x = layers.SpatialDropout1D(0.4)(x)
+    x = BatchNormalization()(x)
+
+    x = layers.SeparableConv1D(2*depth, kernel_size=3, strides=1, padding="same")(x)
+    x = ReLU()(x)
+    # x = BatchNormalization()(x)
     x = layers.SpatialDropout1D(0.6)(x)
 
-    x = layers.SeparableConv1D(2*depth, kernel_size=5, strides=2, padding="same")(x)
+    x = layers.SeparableConv1D(2*depth, kernel_size=3, strides=1, padding="same")(x)
     x = ReLU()(x)
+    # x = BatchNormalization()(x)
     x = layers.SpatialDropout1D(0.6)(x)
 
-    x = layers.SeparableConv1D(2*depth, kernel_size=5, strides=1, padding="same")(x)
+    x = layers.SeparableConv1D(2*depth, kernel_size=3, strides=1, padding="same")(x)
     x = ReLU()(x)
-    x = layers.SpatialDropout1D(0.6)(x)
-
-    x = layers.SeparableConv1D(2*depth, kernel_size=5, strides=1, padding="same")(x)
-    x = ReLU()(x)
+    # x = BatchNormalization()(x)
     x = layers.SpatialDropout1D(0.6)(x)
 
     x = layers.Conv1D(target_depth, kernel_size=1, strides=1, padding="same")(x)
     # x = MyConv1DTranspose(target_depth, kernel_size=1, strides=8, padding="same")(x)
-    x = layers.UpSampling1D(4)(x)
+    # x = layers.UpSampling1D(4)(x)
+    return x
 
+def v4_simple(x, depth, target_depth):
+    depth2 = max(depth//2, target_depth)
+    depth3 = max(depth2//2, target_depth)
+
+    x = BatchNormalization()(x)
+    x = layers.SpatialDropout1D(0.6)(x)
+
+    x = Bidirectional(LSTM(depth, return_sequences=True), merge_mode='concat')(x)
+    x = layers.SpatialDropout1D(0.4)(x)
+
+    x = layers.SeparableConv1D(depth, kernel_size=5, padding="same")(x)
+    x = ReLU()(x)
+    x = layers.SpatialDropout1D(0.4)(x)
+
+    x = layers.Conv1D(target_depth, kernel_size=1)(x)
+
+    return x
 
 def make_inference_model(inpt_shape, output_shape, categorical=True):
     """
@@ -190,8 +216,9 @@ def make_inference_model(inpt_shape, output_shape, categorical=True):
         inpt_length, target_depth = inpt_shape
     
     # x = inference_autoencoder(x, depth, target_depth)
-    x = v2_simple(x, depth, target_depth)
+    # x = v2_simple(x, depth, target_depth)
     # x = v3_sepconv(x, depth, target_depth)
+    x = v4_simple(x, depth, target_depth)
 
     if x.shape != output_shape:
         x = layers.Reshape(output_shape, name="reshape2")(x)
@@ -205,11 +232,11 @@ def make_inference_model(inpt_shape, output_shape, categorical=True):
     model = Model(inpt, x)
 
     # regularize adjacent timesteps to be similar
-    REG_WEIGHT = 1.0
-    diff = K.abs(x[:-1] - x[1:])
-    diff_loss = K.mean(diff) * REG_WEIGHT
-    model.add_loss(diff_loss)
-    model.add_metric(diff_loss, aggregation='mean', name='diff_loss')
+    # REG_WEIGHT = 1.0
+    # diff = K.abs(x[:-1] - x[1:])
+    # diff_loss = K.mean(diff) * REG_WEIGHT
+    # model.add_loss(diff_loss)
+    # model.add_metric(diff_loss, aggregation='mean', name='diff_loss')
 
     return model
 

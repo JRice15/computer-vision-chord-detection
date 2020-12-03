@@ -94,7 +94,7 @@ def test_inference_model(im_name, inf_name, xpredtrain=None,
         print("Generating video on test set predictions")
         xpredtest2, ytest2 = group_sequences(xpredtest, ytest, step=INPUT_LEN)
 
-        numframes = 1000 // INPUT_LEN
+        numframes = 3000 // INPUT_LEN
         testpreds = inf_model.predict(xpredtest2[:numframes], verbose=1)
 
         vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
