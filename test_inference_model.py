@@ -51,6 +51,8 @@ def test_inference_model(im_name, inf_name, xpredtrain=None,
     """
     testing
     """
+    if len(xpredtest) != len(ytest):
+        raise ValueError("Preds and true labels lengths ont match. Re-run src/load_preds.py with the '--repredict' flag")
 
     xpredtestgrouped, ytestgrouped = group_sequences(xpredtest, ytest, step=1)
 
@@ -95,7 +97,7 @@ def test_inference_model(im_name, inf_name, xpredtrain=None,
         print("Generating video on test set predictions")
         xpredtest2, ytest2 = group_sequences(xpredtest, ytest, step=INPUT_LEN)
 
-        numframes = 3000 // INPUT_LEN
+        numframes = 100_000 // INPUT_LEN
         testpreds = inf_model.predict(xpredtest2[:numframes], verbose=1)
 
         vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \

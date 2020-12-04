@@ -41,7 +41,7 @@ def test_im_model(name, xtrain_short=None, ytrain_short=None, nodisplay=False,
     testing
     """
     data = load_all_data("data/inference_model_train", num_splits=0, 
-                display=(not args.nodisplay), do_test=do_test)
+                display=(not nodisplay), do_test=do_test)
     xtest, _, _, ytest, _, _ = data
 
     print("Evaluating on test set w/ no transitions")
@@ -53,8 +53,12 @@ def test_im_model(name, xtrain_short=None, ytrain_short=None, nodisplay=False,
             print(" ", metric+":", results[i])
             f.write(metric+": "+str(results[i])+"\n")
 
+    # free memory
+    del data, xtest, ytest
+    import gc; gc.collect()
+
     data = load_all_data("data/inference_model_train", num_splits=0, 
-                display=(not args.nodisplay), do_test=do_test, no_transitions=False)
+                display=(not nodisplay), do_test=do_test, no_transitions=False)
     xtest, _, _, ytest, _, _ = data
 
     print("Evaluating on test set w/ transitions")
