@@ -754,7 +754,7 @@ def main(**kwargs):
         batch = vid[i:i+500]
         blurred = blur(batch)
         # bg = bg_subtract(blurred)
-        edges = edge_process(blurred, show_result=False and args.show)
+        edges = edge_process(blurred, show_result=True and args.show)
         timer()
         linesvid, lines = find_lines(edges, batch, show_result=True and args.show)
         timer()
