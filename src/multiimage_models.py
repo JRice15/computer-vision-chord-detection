@@ -74,15 +74,16 @@ def make_multiimage_model(name, num_inputs, img_shape, output_confidences):
     # recombine
     xs = [Reshape((1,)+x.shape[1:])(x) for x in xs]
     x = Concatenate(axis=1)(xs)
-    x = layers.SpatialDropout1D(0.6)(x)
+    #x = layers.SpatialDropout1D(0.6)(x)
 
     # process together
-    x = Bidirectional(LSTM(256, return_sequences=True), merge_mode='concat')(x)
-    x = layers.SpatialDropout1D(0.4)(x)
+    x = Bidirectional(LSTM(128, return_sequences=True), merge_mode='concat')(x)
+    x = Bidirectional(LSTM(64, return_sequences=True), merge_mode='sum')(x)
+    #x = layers.SpatialDropout1D(0.4)(x)
 
-    x = Conv1D(64, kernel_size=5, padding="same")(x)
-    x = ReLU()(x)
-    x = layers.SpatialDropout1D(0.4)(x)
+    #x = layers.SeparableConv1D(64, kernel_size=8, padding="same")(x)
+    #x = ReLU()(x)
+    #x = layers.SpatialDropout1D(0.4)(x)
 
     if output_confidences:
         # if the maximum fret is 5, there are 6 options, because 0 is a possibility

@@ -12,7 +12,7 @@ from src.cv_helpers import *
 from src.multiimage_models import make_multiimage_model, fret_accuracy, group_image_sequences
 from src.load_data import load_one, load_all_data
 
-def test_multiimage_model(name, nodisplay=False, summary=False, do_test=False):
+def test_multiimage_model(name, display=False, summary=False, do_test=False):
     """
     test the image model on test set data
     args:
@@ -41,7 +41,7 @@ def test_multiimage_model(name, nodisplay=False, summary=False, do_test=False):
     testing
     """
     data = load_all_data("data/inference_model_train", num_splits=0, 
-                display=(not args.nodisplay), do_test=do_test)
+                display=display, do_test=do_test)
     xtest, _, _, ytest, _, _ = data
 
     xtest, ytest = group_image_sequences(xtest, ytest, num_inputs, num_inputs)
@@ -55,9 +55,16 @@ def test_multiimage_model(name, nodisplay=False, summary=False, do_test=False):
             print(" ", metric+":", results[i])
             f.write(metric+": "+str(results[i])+"\n")
 
+    del data, xtest, ytest
+    import gc
+    gc.collect()
+
     data = load_all_data("data/inference_model_train", num_splits=0, 
-                display=(not args.nodisplay), do_test=do_test, no_transitions=False)
+                display=display, do_test=do_test, no_transitions=False)
     xtest, _, _, ytest, _, _ = data
+    del data
+    
+    xtest, ytest = group_image_sequences(xtest, ytest, num_inputs, num_inputs)
 
     print("Evaluating on test set w/ transitions")
     print(len(xtest), "testing images")
@@ -77,13 +84,14 @@ def test_multiimage_model(name, nodisplay=False, summary=False, do_test=False):
 
     # unsequence, turn into one big sequence
     xtest = np.concatenate(list(xtest[:numframes]), axis=0)
+    testpreds = np.concatenate(list(testpreds[:numframes]), axis=0)
     ytest = np.concatenate(list(ytest[:numframes]), axis=0)
 
     vid = [cv.resize(i, dsize=(0,0), fx=scaleup, fy=scaleup, \
                 interpolation=cv.INTER_LINEAR) for i in xtest]
 
     annotate_vid(vid, testpreds, ytest, categorical)
-    if not nodisplay:
+    if display:
         showvid(vid, name="test set", ms=35)
     writevid(vid, "stats/"+name+"/results_visualization_testset")
 
@@ -96,4 +104,4 @@ if __name__ == "__main__":
     parser.usage = parser.format_help()
     args = parser.parse_args()
 
-    test_multiimage_model(args.name, nodisplay=args.nodisplay, summary=True)
+    test_multiimage_model(args.name, display=(not args.nodisplay), summary=True)

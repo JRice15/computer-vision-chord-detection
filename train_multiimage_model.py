@@ -43,10 +43,10 @@ class TrainConfig:
 
     def __init__(self):
         self.epochs = 50
-        self.model = "mobilenetv2"
+        self.model = "xception"
         self.batchsize = 8
         self.lr = 0.001
-        self.lr_sched_freq = 6
+        self.lr_sched = [4, 16, 24, 36, 46]
         self.lr_sched_factor = 0.2
         self.loss = "sparsecategoricalcrossentropy"
         self.num_inputs = 8
@@ -183,15 +183,8 @@ def train_gen():
                 # showim(X[i][0][0])
                 yield X[i], Y[i]
 
-def lr_sched(epoch, lr=None):
-    if lr is None:
-        if epoch % config.lr_sched_freq == 0:
-            print("Decreasing learning rate to", lr)
-        exp = epoch // config.lr_sched_freq
-        lr = config.lr * (config.lr_sched_factor ** exp)
-    elif epoch == 0:
-        pass
-    elif epoch % config.lr_sched_freq == 0:
+def lr_sched(epoch, lr):
+    if epoch in config.lr_sched:
         lr = lr * config.lr_sched_factor
         print("Decreasing learning rate to", lr)
     return lr
@@ -201,7 +194,7 @@ callbacks = [
     History(),
     LearningRateScheduler(lr_sched),
     ModelCheckpoint("models/"+args.name+".hdf5", save_best_only=True, verbose=1, period=1),
-    EarlyStopping(monitor='val_loss', verbose=1, patience=int(config.lr_sched_freq * 1.5))
+    EarlyStopping(monitor='val_loss', verbose=1, patience=(config.epochs//4)),
 ]
 
 start = time.time()
