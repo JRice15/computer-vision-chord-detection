@@ -146,6 +146,7 @@ else:
 model = make_model(config.model, img_shape, output_confidences=categorical)
 
 model.summary()
+keras.utils.plot_model(model, show_shapes=True, dpi=192)
 
 if categorical:
     metrics = ["sparse_categorical_accuracy"]

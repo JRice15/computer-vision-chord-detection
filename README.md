@@ -18,3 +18,5 @@
     * this is run by train_image_model at the end automatically
 * train_inference_model.py:
     * train the inference model on the data in `data/inference_model_train`
+* test_inference_model.py:
+    * test the inference model (and image model) on the test set in `data/inference_model_test`

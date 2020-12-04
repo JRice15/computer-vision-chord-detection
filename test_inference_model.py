@@ -26,6 +26,7 @@ def test_inference_model(im_name, inf_name, xpredtrain=None,
     print("Loading models...")
     objs = {"accuracy": fret_accuracy(), "MyConv1DTranspose": MyConv1DTranspose}
     inf_model = keras.models.load_model("models/"+inf_name+".hdf5", custom_objects=objs)
+    #keras.utils.plot_model(inf_model, dpi=192, rankdir='TB', show_layer_names=False, show_shapes=True)
     if not noimagemodel:
         img_model = keras.models.load_model("models/"+im_name+".hdf5", custom_objects=objs)
 
@@ -66,7 +67,7 @@ def test_inference_model(im_name, inf_name, xpredtrain=None,
         print("Evaluating image model on test set")
         print(len(xtest), "test examples")
         results = img_model.evaluate(xtest, ytest)
-        with open("stats/"+img_model+"/stats.txt", "a") as f:
+        with open("stats/"+im_name+"/stats.txt", "a") as f:
             f.write("\nInference Test results:\n")
             for i,name in enumerate(img_model.metrics_names):
                 print(" ", str(name)+":", results[i])
